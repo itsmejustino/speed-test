@@ -118,41 +118,84 @@ func runProgram(ctx context.Context, path string, args ...string) ([]byte, error
 }
 
 // parseNDT7 reads ndt7-client -format json: progress lines, then a summary
-// object with Download, Upload and MinRTT, each {"Value":…, "Unit":…}.
+// object. Older clients put {"Value", "Unit"} pairs at the top
+// (Download, Upload, MinRTT, DownloadRetrans); newer ones nest them
+// (Download.Throughput, Download.Latency, Download.Retransmission). Both are
+// read; a summary that gives no download speed is an error that quotes it.
 func parseNDT7(out []byte) (sample, error) {
 	var s sample
-	type val struct {
-		Value float64
-		Unit  string
-	}
-	var found bool
+	var lastObj string
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	for sc.Scan() {
-		var m struct {
-			ServerFQDN      string
-			Download        *val
-			Upload          *val
-			MinRTT          *val
-			DownloadRetrans *val
-		}
-		if json.Unmarshal(sc.Bytes(), &m) != nil || m.Download == nil || m.Upload == nil {
+		var m map[string]any
+		if json.Unmarshal(sc.Bytes(), &m) != nil {
 			continue
 		}
-		found = true
-		s.Down, s.Up = toMbps(m.Download.Value, m.Download.Unit), toMbps(m.Upload.Value, m.Upload.Unit)
-		if m.MinRTT != nil {
-			s.Ping = m.MinRTT.Value
+		if _, ok := m["Download"]; !ok {
+			if _, ok := m["Upload"]; !ok {
+				continue
+			}
 		}
-		if m.DownloadRetrans != nil {
-			s.Loss = m.DownloadRetrans.Value
+		lastObj = sc.Text()
+		if v, u, ok := vu(m, "Download", "Throughput"); ok {
+			s.Down = toMbps(v, u)
+		} else if v, u, ok := vu(m, "Download"); ok {
+			s.Down = toMbps(v, u)
 		}
-		s.Server = m.ServerFQDN
+		if v, u, ok := vu(m, "Upload", "Throughput"); ok {
+			s.Up = toMbps(v, u)
+		} else if v, u, ok := vu(m, "Upload"); ok {
+			s.Up = toMbps(v, u)
+		}
+		if v, _, ok := vu(m, "MinRTT"); ok {
+			s.Ping = v
+		} else if v, _, ok := vu(m, "Download", "Latency"); ok {
+			s.Ping = v
+		}
+		if v, _, ok := vu(m, "DownloadRetrans"); ok {
+			s.Loss = v
+		} else if v, _, ok := vu(m, "Download", "Retransmission"); ok {
+			s.Loss = v
+		}
+		if f, ok := m["ServerFQDN"].(string); ok {
+			s.Server = f
+		}
 	}
-	if !found {
-		return s, errors.New("no summary in ndt7-client output")
+	if s.Down <= 0 && s.Up <= 0 {
+		if lastObj == "" {
+			return s, errors.New("no summary in ndt7-client output")
+		}
+		if len(lastObj) > 400 {
+			lastObj = lastObj[:400]
+		}
+		return s, errors.New("could not read speeds from the ndt7-client summary: " + lastObj)
 	}
 	return s, nil
+}
+
+// vu follows keys into nested objects and reads a {"Value": n, "Unit": u} pair there.
+func vu(m map[string]any, keys ...string) (float64, string, bool) {
+	var cur any = m
+	for _, k := range keys {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return 0, "", false
+		}
+		if cur, ok = obj[k]; !ok {
+			return 0, "", false
+		}
+	}
+	obj, ok := cur.(map[string]any)
+	if !ok {
+		return 0, "", false
+	}
+	v, ok := obj["Value"].(float64)
+	if !ok {
+		return 0, "", false
+	}
+	u, _ := obj["Unit"].(string)
+	return v, u, true
 }
 
 func toMbps(v float64, unit string) float64 {

@@ -9,6 +9,14 @@ func TestParseNDT7(t *testing.T) {
 	if err != nil || s.Down != 512.25 || s.Up != 41.5 || s.Ping != 11 || s.Loss != 0.3 {
 		t.Fatalf("parseNDT7 = %+v, %v", s, err)
 	}
+	nested := []byte(`{"ServerFQDN":"ndt-x","Download":{"Throughput":{"Value":901.5,"Unit":"Mbit/s"},"Latency":{"Value":7.5,"Unit":"ms"},"Retransmission":{"Value":0.2,"Unit":"%"}},"Upload":{"Throughput":{"Value":44,"Unit":"Mbit/s"}}}`)
+	s, err = parseNDT7(nested)
+	if err != nil || s.Down != 901.5 || s.Up != 44 || s.Ping != 7.5 || s.Loss != 0.2 {
+		t.Fatalf("parseNDT7 nested = %+v, %v", s, err)
+	}
+	if _, err := parseNDT7([]byte(`{"Download":{"Odd":1},"Upload":{}}`)); err == nil {
+		t.Fatal("want an error that quotes a summary without speeds")
+	}
 	if _, err := parseNDT7([]byte("not json")); err == nil {
 		t.Fatal("want an error for output without a summary")
 	}
