@@ -1183,6 +1183,27 @@ function speedEngine(post) {
     if (st.sent) st.retransPct = st.retrans / st.sent * 100;
     return st;
   }
+  // Upload speed from the server's side. A request's bytes all arrived between
+  // the previous answer on its connection and its own, so each is spread over
+  // that interval; the bytes inside one window shared by every connection
+  // (end of the warm-up to the last moment each still had an answer to come)
+  // are added up. Null when that window is under a second.
+  function confirmedMbps(done, warm) {
+    var end = -1;
+    done.forEach(function (list) { if (list.length) { var l = list[list.length - 1].at; if (end < 0 || l < end) end = l; } });
+    if (end - warm < 1) return null;
+    var bytes = 0;
+    done.forEach(function (list) {
+      var prev = 0;
+      list.forEach(function (c) {
+        var lo = Math.max(prev, warm), hi = Math.min(c.at, end);
+        if (hi > lo && c.at > prev) bytes += c.bytes * (hi - lo) / (c.at - prev);
+        prev = c.at;
+      });
+    });
+    return bytes * 8 / 1e6 / (end - warm);
+  }
+
   function latencyStats(probes, from, to, steadyFrom) {
     var st = { median: 0, min: 0, p90: 0, jitter: 0, lossPct: 0, sent: 0, lost: 0 }, rtts = [];
     probes.forEach(function (p) {
@@ -1219,7 +1240,7 @@ function speedEngine(post) {
   // Upload data: 1 MB of random bytes, and one Blob per size built from it once.
   // Blobs are immutable, so every request can send the same one without copying.
   var noise = null, blobs = {};
-  var UP_STEPS = [5e5, 1e6, 2e6, 5e6, 1e7, 2.5e7];   // upload sizes while progress reports are sparse
+  var UP_STEPS = [5e5, 1e6, 2e6, 5e6, 1e7, 2.5e7];   // upload request sizes
   function uploadBlob(size) {
     if (blobs[size]) return blobs[size];
     if (!noise) { noise = new Uint8Array(1 << 20); for (var o = 0; o < noise.length; o += 65536) crypto.getRandomValues(noise.subarray(o, o + 65536)); }
@@ -1358,39 +1379,38 @@ function speedEngine(post) {
     var stopAll = function () { ctl.abort(); };
     this.ctl.signal.addEventListener('abort', stopAll, { once: true });
     var l4 = new Array(cfg.streams).fill(null);
+    var done = []; for (var d0 = 0; d0 < cfg.streams; d0++) done.push([]);   // uploads the server confirmed, per connection
     var setFail = function (e) { if (!failErr) { failErr = e; ctl.abort(); } };
 
     var streams = [];
     for (var i = 0; i < cfg.streams; i++) (function (slot) {
       streams.push((async function () {
-        // Downloads: about two seconds per request at the speed so far (2 MB to
-        // start), so a slow line still completes requests and gets the server's
-        // TCP figures. No bursts of quick requests: Cloudflare refuses those.
-        // Uploads stay large: they count as they enter the send buffer, which
-        // refills in a burst per request.
-        //
-        // Some browsers (Safari, so every iPhone browser) report upload progress
-        // once or not at all until a request is done. Until steady reports show
-        // up, uploads use requests sized to finish in about 1.5 s, each counted
-        // when Cloudflare confirms it, so a slow uplink still counts its bytes.
+        // About two seconds per request at the speed so far (2 MB to start), so
+        // a slow line still completes requests: each answer carries the server's
+        // TCP figures and, for uploads, its confirmation of what arrived, which
+        // is what upload speed is counted from. No bursts of quick requests:
+        // Cloudflare refuses those. Uploads pick from a few fixed sizes so the
+        // data for each is built once.
         var errs = 0;
         while (!ctl.signal.aborted) {
           var idx = sizeIdx, status = 0, err = null, size = sizes[idx];
           var el = (performance.now() - began) / 1000;
-          if (kind === 'download') {
-            var want = moved > 0 && el > 0.25 ? moved / el / cfg.streams * 2 : 2e6;
-            size = Math.round(Math.min(sizes[idx], Math.max(2e6, want)));
-          } else if (self.progressReports < 8) {
-            var wantUp = moved > 0 && el > 0.25 ? moved / el / cfg.streams * 1.5 : 1e6;
-            size = UP_STEPS.filter(function (v) { return v <= wantUp && v <= sizes[idx]; }).pop() || UP_STEPS[0];
-          }
+          // 2 s per download request; 1 s per upload request, so the requests cut by the
+          // edges of the confirmed-upload window are short.
+          var want = moved > 0 && el > 0.25 ? moved / el / cfg.streams * (kind === 'upload' ? 1 : 2) : 2e6;
+          if (kind === 'download') size = Math.round(Math.min(sizes[idx], Math.max(2e6, want)));
+          else size = UP_STEPS.filter(function (v) { return v <= want && v <= sizes[idx]; }).pop() || UP_STEPS[0];
           requests++;
           try { status = await self.request(kind, size, ctl, function (n) { moved += n; }, function (s) { l4[slot] = s; }); }
           catch (e) { err = e; }
           if (ctl.signal.aborted) break;
           var early = performance.now() - began < 3000;
           if (status === 429) { setFail(fail('The Cloudflare speed test service is rate-limiting this connection (HTTP 429). Wait a while, then run again.')); break; }
-          if (status >= 200 && status < 300 && !err) { errs = 0; continue; }
+          if (status >= 200 && status < 300 && !err) {
+            errs = 0;
+            if (kind === 'upload') done[slot].push({ at: (performance.now() - began) / 1000, bytes: size });
+            continue;
+          }
           if (early && idx < sizes.length - 1 && (status === 403 || status === 413 || (status === 0 && kind === 'upload'))) { if (sizeIdx === idx) sizeIdx = idx + 1; continue; }
           if (++errs > 4) {
             var why = err ? (err.message || 'network error') : 'HTTP ' + status;
@@ -1449,6 +1469,10 @@ function speedEngine(post) {
       latency: null, bloatMs: 0, server: summarizeL4(l4)
     };
     if (readings.length) { st.median = pct(readings, 50); st.p90 = pct(readings, 90); st.peak = Math.max.apply(null, readings); }
+    if (kind === 'upload') {
+      var cm = confirmedMbps(done, warm);
+      if (cm != null) { st.sentMbps = st.mbps; st.mbps = cm; st.confirmed = true; }
+    }
     post({ type: 'phaseResult', name: kind, stats: st });
     return st;
   };
@@ -1888,7 +1912,10 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
   function showPhase(kind, st) {
     var k = kind === 'download' ? 'down' : 'up';
     $(k).textContent = fmtMbps(st.mbps);
-    $(k + 'Sub').textContent = 'median ' + fmtMbps(st.median) + ' · 90th ' + fmtMbps(st.p90);
+    $(k + 'Sub').textContent = st.confirmed
+      ? 'confirmed by the server · sent ' + fmtMbps(st.sentMbps)
+      : 'median ' + fmtMbps(st.median) + ' · 90th ' + fmtMbps(st.p90);
+    $(k + 'Sub').title = st.confirmed ? 'Counted from the data Cloudflare confirmed it received. "Sent" counts data as it left this computer, which includes what was still in its send buffer.' : '';
   }
 
   function showResult(r) {
@@ -2221,7 +2248,7 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
     L.push('');
     [['Download', r.download], ['Upload', r.upload]].forEach(function (x) {
       var p = x[1];
-      L.push(pad(x[0], 12) + lpad(f1(p.mbps), 8) + ' Mbps   median ' + f1(p.median) + ' · 90th ' + f1(p.p90) + '   loaded ping ' + f1(p.latency.median) + ' ms (+' + f1(Math.max(0, p.bloatMs)) + ')');
+      L.push(pad(x[0], 12) + lpad(f1(p.mbps), 8) + ' Mbps   ' + (p.confirmed ? 'server-confirmed (sent ' + f1(p.sentMbps) + ')' : 'median ' + f1(p.median) + ' · 90th ' + f1(p.p90)) + '   loaded ping ' + f1(p.latency.median) + ' ms (+' + f1(Math.max(0, p.bloatMs)) + ')');
     });
     L.push(pad('Idle ping', 12) + lpad(f1(r.idle.median), 8) + ' ms     jitter ' + f1(r.idle.jitter) + ' ms · loss ' + f1(r.idle.lossPct) + '% of ' + r.idle.sent + ' pings (' + r.probeMethod + ')');
     var bl = Math.max(0, r.download.bloatMs || 0, r.upload.bloatMs || 0);
@@ -2319,13 +2346,13 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
   }
   function exportCSV() {
     var cols = ['when', 'server_colo', 'server_ip', 'client_ip', 'isp', 'asn', 'distance_km', 'idle_ms', 'idle_jitter_ms', 'loss_pct',
-      'download_mbps', 'download_median_mbps', 'download_p90_mbps', 'upload_mbps', 'upload_median_mbps', 'upload_p90_mbps',
+      'download_mbps', 'download_median_mbps', 'download_p90_mbps', 'upload_mbps', 'upload_median_mbps', 'upload_p90_mbps', 'upload_server_confirmed', 'upload_sent_mbps',
       'download_loaded_ms', 'upload_loaded_ms', 'bufferbloat_ms', 'bufferbloat_grade', 'connection_score', 'server_min_rtt_ms', 'server_retrans_pct', 'route_hops', 'probe_method', 'seconds_each_way', 'connections'];
     var esc = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var rows = history.map(function (r) {
       var bloat = Math.max(0, r.download.bloatMs || 0, r.upload.bloatMs || 0), sv = r.download.server || {};
       return [new Date(r.when).toISOString(), r.server.colo, r.server.ip, r.client.ip, r.client.isp, r.client.asn, r.distanceKm ? r.distanceKm.toFixed(1) : '',
-        r.idle.median, r.idle.jitter, r.lossPct, r.download.mbps, r.download.median, r.download.p90, r.upload.mbps, r.upload.median, r.upload.p90,
+        r.idle.median, r.idle.jitter, r.lossPct, r.download.mbps, r.download.median, r.download.p90, r.upload.mbps, r.upload.median, r.upload.p90, r.upload.confirmed ? 'yes' : 'no', r.upload.sentMbps || '',
         r.download.latency.median, r.upload.latency.median, bloat.toFixed(2), bloatGrade(bloat), connectionScore(r).level, sv.minRtt, sv.retransPct,
         r.route ? r.route.length : '', r.probeMethod, r.config.directionSeconds, r.config.streams].map(function (v) {
           return esc(typeof v === 'number' ? Math.round(v * 1000) / 1000 : v);

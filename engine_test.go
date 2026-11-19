@@ -175,7 +175,7 @@ func TestDamagedHistoryIsKept(t *testing.T) {
 	}
 }
 
-func TestDownloadSize(t *testing.T) {
+func TestRequestSize(t *testing.T) {
 	for _, c := range []struct {
 		moved   int64
 		elapsed time.Duration
@@ -187,8 +187,26 @@ func TestDownloadSize(t *testing.T) {
 		{12.5e6, 10 * time.Second, 2e6},    // 10 Mbps over 6 connections: small
 		{125e6, 10 * time.Second, 4166666}, // 100 Mbps over 6: about 4 MB
 	} {
-		if got := downloadSize(25e6, c.moved, c.elapsed, 6); got != c.want {
-			t.Errorf("downloadSize(%d, %v) = %d, want %d", c.moved, c.elapsed, got, c.want)
+		if got := requestSize(25e6, c.moved, c.elapsed, 6, 2); got != c.want {
+			t.Errorf("requestSize(%d, %v) = %d, want %d", c.moved, c.elapsed, got, c.want)
 		}
+	}
+}
+
+func TestConfirmedMbps(t *testing.T) {
+	s := func(v float64) time.Duration { return time.Duration(v * float64(time.Second)) }
+	// Two connections, each confirming 10 MB every 2 s after the warm-up: 40 + 40 Mbps.
+	done := [][]completion{
+		{{s(1), 2e6}, {s(3), 10e6}, {s(5), 10e6}, {s(7), 10e6}},
+		{{s(2), 2e6}, {s(4), 10e6}, {s(6), 10e6}, {s(8), 10e6}},
+	}
+	got, ok := confirmedMbps(done, s(2.5))
+	if !ok || got < 79.9 || got > 80.1 {
+		t.Fatalf("confirmedMbps = %.2f, %v; want 80, true", got, ok)
+	}
+	// A connection whose answers stop soon after the warm-up leaves no shared window.
+	done[1] = []completion{{s(2), 2e6}, {s(3), 10e6}}
+	if _, ok := confirmedMbps(done, s(2.5)); ok {
+		t.Fatal("want ok=false when the shared window is under a second")
 	}
 }

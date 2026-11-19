@@ -51,6 +51,10 @@ func main() {
 	cli := flag.Bool("run", false, "run one test in this window and print the result, without opening the page")
 	asJSON := flag.Bool("json", false, "with -run: print the whole result as JSON")
 	seconds := flag.Float64("seconds", 0, "with -run: seconds for each direction (5-30; default from settings)")
+	compare := flag.Bool("compare", false, "run this test, M-Lab's ndt7-client and Ookla's speedtest CLI (when found) back to back, and report each one's median and spread")
+	rounds := flag.Int("rounds", 5, "with -compare: rounds of every test")
+	pause := flag.Float64("pause", 5, "with -compare: seconds to wait between tests")
+	acceptOokla := flag.Bool("accept-ookla-license", false, "with -compare: accept Ookla's licence and privacy terms when running its speedtest CLI")
 	flag.Parse()
 
 	if baseDir == "" {
@@ -62,6 +66,13 @@ func main() {
 		}
 	}
 	settings = loadSettings()
+	if *compare {
+		n := *rounds
+		if n < 1 {
+			n = 1
+		}
+		os.Exit(runCompare(n, time.Duration(*pause*float64(time.Second)), *acceptOokla, *asJSON, os.Stdout, os.Stderr))
+	}
 	if *cli {
 		os.Exit(runCLI(*asJSON, *seconds, os.Stdout, os.Stderr))
 	}

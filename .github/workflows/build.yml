@@ -40,6 +40,14 @@ jobs:
           ./st.exe -run -json -seconds 5 -data $env:RUNNER_TEMP | Out-File result.json
           $r = Get-Content result.json | ConvertFrom-Json
           "probe method: $($r.probeMethod); hops: $($r.route.Count); adapter: $($r.adapter.kind) $($r.adapter.linkDownMbps) Mbps; local TCP: $($r.tcp.ratePct)"
+      - name: Compare with M-Lab NDT7
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          go install github.com/m-lab/ndt7-client-go/cmd/ndt7-client@latest
+          $env:PATH = "$(go env GOPATH)\bin;$env:PATH"
+          go build -o st.exe .
+          ./st.exe -compare -rounds 3 -pause 3 -data $env:RUNNER_TEMP
 
   windows:
     needs: [test, windows-test]

@@ -63,6 +63,11 @@ type PhaseStats struct {
 	Latency  LatencyStats `json:"latency"` // latency while loaded
 	BloatMs  float64      `json:"bloatMs"` // loaded median minus idle median
 	Server   *ServerTCP   `json:"server,omitempty"`
+	// Upload only: Mbps above is counted from the data Cloudflare confirmed it
+	// received (each request's answer); SentMbps is what left this computer,
+	// counted as it entered the send buffer.
+	Confirmed bool    `json:"confirmed,omitempty"`
+	SentMbps  float64 `json:"sentMbps,omitempty"`
 }
 
 // What Cloudflare's own TCP stack saw on our connections (its Server-Timing
@@ -559,6 +564,13 @@ func (r *Run) transfer(kind string) (PhaseStats, error) {
 	dur := time.Duration(r.cfg.DirectionSeconds * float64(time.Second))
 	warm := r.cfg.WarmupSeconds
 
+	// About 2 s per download request; 1 s per upload request, so the requests
+	// cut by the edges of the confirmed-upload window are short.
+	target := 2.0
+	if kind == "upload" {
+		target = 1.0
+	}
+
 	ctx, cancel := context.WithCancel(r.ctx)
 	defer cancel()
 	var moved, requests int64
@@ -571,6 +583,8 @@ func (r *Run) transfer(kind string) (PhaseStats, error) {
 	streamsDone := int32(0)
 	var l4mu sync.Mutex
 	l4 := make([]*l4Snapshot, r.cfg.Streams)
+	var doneMu sync.Mutex
+	done := make([][]completion, r.cfg.Streams) // uploads the server confirmed, per connection
 	for i := 0; i < r.cfg.Streams; i++ {
 		wg.Add(1)
 		slot := i
@@ -584,10 +598,7 @@ func (r *Run) transfer(kind string) (PhaseStats, error) {
 			errs := 0
 			for ctx.Err() == nil {
 				idx := atomic.LoadInt32(&sizeIdx)
-				size := sizes[idx]
-				if kind == "download" {
-					size = downloadSize(size, atomic.LoadInt64(&moved), time.Since(began), r.cfg.Streams)
-				}
+				size := requestSize(sizes[idx], atomic.LoadInt64(&moved), time.Since(began), r.cfg.Streams, target)
 				atomic.AddInt64(&requests, 1)
 				status, err := r.request(ctx, c, kind, size, &moved, onL4)
 				if ctx.Err() != nil {
@@ -600,6 +611,11 @@ func (r *Run) transfer(kind string) (PhaseStats, error) {
 					return
 				case status >= 200 && status < 300 && err == nil:
 					errs = 0
+					if kind == "upload" {
+						doneMu.Lock()
+						done[slot] = append(done[slot], completion{at: time.Since(began), bytes: size})
+						doneMu.Unlock()
+					}
 					continue
 				case early && int(idx) < len(sizes)-1 && (status == 403 || status == 413 || (status == 0 && kind == "upload")):
 					// The server turned the file size down: everyone steps down one size.
@@ -731,25 +747,30 @@ loop:
 	l4mu.Lock()
 	st.Server = summarizeL4(l4)
 	l4mu.Unlock()
+	if kind == "upload" {
+		doneMu.Lock()
+		c, ok := confirmedMbps(done, time.Duration(warm*float64(time.Second)))
+		doneMu.Unlock()
+		if ok {
+			st.SentMbps, st.Mbps, st.Confirmed = st.Mbps, c, true
+		}
+	}
 	r.emit("phaseResult", "name", kind, "stats", st)
 	return st, nil
 }
 
-// downloadSize picks a request size that takes about two seconds at the speed
+// requestSize picks a request size that takes about the given seconds at the speed
 // measured so far: a slow line still completes requests within the test (and
-// gets the server's TCP figures, which come with each answer), while a fast
-// one goes straight to the largest size. The first request on each connection
-// is 2 MB. Sizes never step up in a burst of quick requests: Cloudflare refuses
-// a run of rapid requests from one address.
-//
-// Uploads keep the largest size from the start: an upload is counted as it
-// enters this computer's send buffer, which refills in a burst at every new
-// request and makes short requests read unevenly.
-func downloadSize(max, moved int64, elapsed time.Duration, streams int) int64 {
+// gets the server's TCP figures, which come with each answer, and for uploads
+// its confirmation of what arrived), while a fast one goes straight to the
+// largest size. The first request on each connection is 2 MB. Sizes never step
+// up in a burst of quick requests: Cloudflare refuses a run of rapid requests
+// from one address.
+func requestSize(max, moved int64, elapsed time.Duration, streams int, seconds float64) int64 {
 	const first = 2e6
 	want := int64(first)
 	if moved > 0 && elapsed > 250*time.Millisecond && streams > 0 {
-		want = int64(float64(moved) / elapsed.Seconds() / float64(streams) * 2)
+		want = int64(float64(moved) / elapsed.Seconds() / float64(streams) * seconds)
 	}
 	if want < first {
 		want = first
@@ -758,6 +779,46 @@ func downloadSize(max, moved int64, elapsed time.Duration, streams int) int64 {
 		want = max
 	}
 	return want
+}
+
+// An upload request the server answered: it had received every byte by then.
+type completion struct {
+	at    time.Duration // since the phase began
+	bytes int64
+}
+
+// confirmedMbps is upload speed from the server's side. A request's bytes
+// all arrived between the previous answer on its connection and its own
+// answer, so each request is spread evenly over that interval; the bytes that
+// fall inside one window shared by every connection are added up. The window
+// runs from the end of the warm-up to the last moment every connection still
+// had an answer to come, so nothing cut off at the end is counted. ok is
+// false when that window is shorter than a second.
+func confirmedMbps(done [][]completion, warm time.Duration) (mbps float64, ok bool) {
+	end := time.Duration(-1)
+	for _, list := range done {
+		if len(list) == 0 {
+			continue
+		}
+		if last := list[len(list)-1].at; end < 0 || last < end {
+			end = last
+		}
+	}
+	if end-warm < time.Second {
+		return 0, false
+	}
+	var bytes float64
+	for _, list := range done {
+		prev := time.Duration(0)
+		for _, c := range list {
+			lo, hi := max(prev, warm), min(c.at, end)
+			if hi > lo && c.at > prev {
+				bytes += float64(c.bytes) * float64(hi-lo) / float64(c.at-prev)
+			}
+			prev = c.at
+		}
+	}
+	return bytes * 8 / 1e6 / (end - warm).Seconds(), true
 }
 
 func waitTimeout(wg *sync.WaitGroup, d time.Duration) {

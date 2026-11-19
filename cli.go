@@ -130,7 +130,11 @@ func textReport(r *Result) string {
 	}
 	line("")
 	phase := func(name string, p PhaseStats) {
-		line("%-12s %8s Mbps   median %s · 90th %s   loaded ping %s ms (+%s)", name, f1(p.Mbps), f1(p.Median), f1(p.P90), f1(p.Latency.Median), f1(math.Max(0, p.BloatMs)))
+		how := fmt.Sprintf("median %s · 90th %s", f1(p.Median), f1(p.P90))
+		if p.Confirmed {
+			how = fmt.Sprintf("server-confirmed (sent %s)", f1(p.SentMbps))
+		}
+		line("%-12s %8s Mbps   %s   loaded ping %s ms (+%s)", name, f1(p.Mbps), how, f1(p.Latency.Median), f1(math.Max(0, p.BloatMs)))
 	}
 	phase("Download", r.Download)
 	phase("Upload", r.Upload)

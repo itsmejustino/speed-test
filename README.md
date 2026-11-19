@@ -4,7 +4,7 @@ A Windows speed test for network engineers. A native Go engine measures your con
 
 ## What it measures
 
-- **Download and upload:** steady-state throughput over several TCP connections, after warm-up.
+- **Download and upload:** steady-state throughput over several TCP connections, after warm-up. Upload is counted from what Cloudflare confirms it received, not from what left the computer.
 - **Ping and jitter:** idle, and while the line is busy (bufferbloat).
 - **Packet loss:** lost pings, packets the server resent, and packets Windows resent.
 - **Route:** each hop to the server, using ICMP with rising TTL.
@@ -41,6 +41,10 @@ Settings and history are saved next to the program in `settings.json` and `histo
 | `-run` | off | Run one test in the console and print the result |
 | `-json` | off | With `-run`: print JSON |
 | `-seconds` | from settings | With `-run`: seconds each way (5–30) |
+| `-compare` | off | Run this test and other speed tests back to back (see below) |
+| `-rounds` | `5` | With `-compare`: rounds of every test |
+| `-pause` | `5` | With `-compare`: seconds between tests |
+| `-accept-ookla-license` | off | With `-compare`: accept Ookla's licence when running its CLI |
 
 ### Command line
 
@@ -53,6 +57,21 @@ SpeedTest.exe -run -seconds 10     10 seconds each way
 ```
 
 Progress goes to stderr and the result to stdout. The exit code is 0 when the test finished, 1 when it failed. Results are also saved to the history.
+
+### Comparing with other speed tests
+
+To check this test against others on your own line, run several rounds of each, back to back:
+
+```
+SpeedTest.exe -compare -rounds 10
+```
+
+It rotates the order every round, then reports each test's median and spread (how far apart its runs were), and saves every run to a `compare-….csv` file next to the program. It uses these when it finds them next to `SpeedTest.exe` or on the PATH:
+
+- **M-Lab NDT7:** [`ndt7-client`](https://github.com/m-lab/ndt7-client-go). One TCP connection to an M-Lab server outside your ISP's network.
+- **Ookla Speedtest:** the [Speedtest CLI](https://www.speedtest.net/apps/cli). Several connections, usually to a server inside your ISP's network. Run it once yourself to accept its licence, or add `-accept-ookla-license`.
+
+Run it on a wired connection with nothing else using the line. The tests measure to different servers in different ways, so some difference between them is expected; the spread shows how repeatable each one is.
 
 ### Comparing with other users (optional)
 
