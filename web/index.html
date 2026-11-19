@@ -1,0 +1,2399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script>
+  // Before anything is drawn: the saved choice, or else the computer's setting.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('speedtest.theme'); } catch (e) { }
+    if (t !== 'light' && t !== 'dark' && t !== 'robot') t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<title>Speed Test</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22 role=%22img%22 aria-label=%22Speed Test%22%3E%3Crect width=%2240%22 height=%2240%22 rx=%229%22 fill=%22%23151D2D%22/%3E%3Cg transform=%22translate(0 5.5)%22%3E%3Cg fill=%22none%22 stroke=%22%23C9B68E%22 stroke-width=%221.65%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M6 16 H12 C17.5 16 17.5 7 23 7 H34%22/%3E%3Cpath d=%22M6 22 H15 C20.5 22 20.5 13 26 13 H34%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E">
+<style>
+  /* Warm taupe: linen ground, cream cards, walnut ink. Terracotta for download,
+     sage for upload, plum for latency, brick red for lost pings. The graph reads
+     these variables, so keep their names. */
+  :root {
+    --bg:      #E6DCCF;
+    --screen:  #F7F2EA;
+    --sunk:    #EFE7DC;
+    --ink:     #4A3F35;
+    --bright:  #2B231C;
+    --dim:     #85766A;
+    --line:    #BCAC99;
+    --grid:    #E6DCCE;
+    --edge:    #D6C8B6;
+    --accent:  #7A5C48;
+    --down:    #B4623A;
+    --up:      #5F8274;
+    --lat:     #8A5B78;
+    --loss:    #B3372B;
+    --b1: #6F937E; --b2: #A9A866; --b3: #D39C57; --b4: #B4623A; --b5: #6B4434;
+    --on-accent: #FBF5EC; --accent-hover: #6A4E3C; --running: #9A6A50;
+    --glow: #F1E9DD; --inset: #FFFDF9; --shadow: rgba(92, 70, 50, 0.08); --btn-shadow: rgba(122, 92, 72, 0.28);
+    --hover: #FBF7F1; --rowhi: #F2EBE1; --field: #FFFCF7; --track: #D9CCBB;
+    --phys: #C9B49C; --bar-other: #CDBDA9; --badge-bg: #F2D6CF; --badge-fg: #7E2219; --warn: #8A4A2A;
+    --selection: #E7C9AE; --backdrop: rgba(70, 52, 38, 0.35); --dlg-shadow: rgba(60, 40, 25, 0.3);
+    --band-idle: rgba(138, 91, 120, 0.06); --band-down: rgba(180, 98, 58, 0.07); --band-up: rgba(95, 130, 116, 0.08);
+    --glass: rgba(255, 253, 249, 0.55); --glass-rim: rgba(255, 255, 255, 0.88); --glass-edge: rgba(133, 118, 106, 0.55);
+    --sheen: rgba(255, 255, 255, 0.35); --glint: rgba(255, 248, 235, 0.55); --grain-shade: rgba(70, 45, 25, 0.25);
+    --knob: #FFFDF9;
+    --font: "Palatino Linotype", "Book Antiqua", Palatino, "Iowan Old Style", "URW Palladio L", Georgia, serif;
+    --mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+  }
+  /* Dark: the same warm family after sundown. Espresso ground, walnut cards,
+     parchment ink; the series colours lifted so they hold up on dark. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #1C1714; --screen: #28211C; --sunk: #221C18;
+    --ink: #DCCFC1; --bright: #F6EDE2; --dim: #A2948A; --line: #5C4F45; --grid: #342C26; --edge: #3D332C;
+    --accent: #C9A07F; --on-accent: #1E1814; --accent-hover: #D9B394; --running: #A97E60;
+    --down: #DB8B5E; --up: #8DB3A3; --lat: #C48FB2; --loss: #E4614F;
+    --b1: #82A68F; --b2: #B9B474; --b3: #DFA966; --b4: #DB8B5E; --b5: #A4705A;
+    --glow: #2B231D; --inset: rgba(255, 240, 225, 0.04); --shadow: rgba(0, 0, 0, 0.35); --btn-shadow: rgba(0, 0, 0, 0.4);
+    --hover: #322A24; --rowhi: #30271F; --field: #1F1A16; --track: #3A312A;
+    --phys: #6E5D4E; --bar-other: #54473D; --badge-bg: #4A2622; --badge-fg: #F3B3A9; --warn: #E3A57F;
+    --selection: #5C4636; --backdrop: rgba(0, 0, 0, 0.55); --dlg-shadow: rgba(0, 0, 0, 0.6);
+    --band-idle: rgba(196, 143, 178, 0.06); --band-down: rgba(219, 139, 94, 0.07); --band-up: rgba(141, 179, 163, 0.07);
+    --glass: rgba(255, 240, 225, 0.035); --glass-rim: rgba(255, 240, 225, 0.24); --glass-edge: rgba(255, 240, 225, 0.12);
+    --sheen: rgba(255, 240, 225, 0.08); --glint: rgba(255, 244, 228, 0.45); --grain-shade: rgba(0, 0, 0, 0.35);
+    --knob: #F6EDE2;
+  }
+  /* Robot: a steampunk workshop. Iron and leather behind, every panel a brass
+     television set with rivets, its contents on a glowing phosphor screen. */
+  :root[data-theme="robot"] {
+    color-scheme: dark;
+    /* Soft Midnight Blue, with satin champagne metal and the warm glow of valves */
+    --bg: #111827; --screen: #1B2536; --sunk: #161F2E;
+    --ink: #EEF3F8; --bright: #F7FAFC; --dim: #B7C3D1; --line: #334155; --grid: #243247; --edge: #334155;
+    --accent: #89A8C9; --on-accent: #111827; --accent-hover: #AFC3DA; --running: #6F8DAE;
+    --down: #89A8C9; --up: #8FB7A3; --lat: #E3B97E; --loss: #E08A8A;
+    --b1: #8FB7A3; --b2: #89A8C9; --b3: #CDBB8E; --b4: #E0A27A; --b5: #C97B7B;
+    --glow: #1E2A40; --inset: rgba(238, 243, 248, 0.05); --shadow: rgba(3, 7, 16, 0.55); --btn-shadow: rgba(3, 7, 16, 0.5);
+    --hover: #22304A; --rowhi: #202C42; --field: #141C2A; --track: #243247;
+    --phys: #4A5A72; --bar-other: #3A4A62; --badge-bg: #4A2430; --badge-fg: #F5B8B8; --warn: #E3B97E;
+    --selection: #34507A; --backdrop: rgba(5, 9, 18, 0.65); --dlg-shadow: rgba(0, 0, 0, 0.6);
+    --band-idle: rgba(227, 185, 126, 0.035); --band-down: rgba(137, 168, 201, 0.05); --band-up: rgba(143, 183, 163, 0.05);
+    --glass: rgba(175, 195, 218, 0.04); --glass-rim: rgba(214, 196, 156, 0.55); --glass-edge: rgba(214, 196, 156, 0.22);
+    --sheen: rgba(238, 243, 248, 0.07); --glint: rgba(255, 250, 235, 0.5); --grain-shade: rgba(0, 0, 0, 0.35);
+    --knob: #D8C8A4;
+    /* Satin champagne metal: soft highlights, no hard shine */
+    --metal: linear-gradient(160deg, #E6DABD 0%, #C9B68E 30%, #A69172 52%, #CDBB95 74%, #E2D5B6 100%);
+    --metal-soft: linear-gradient(180deg, #E4D8BB, #B9A57F);
+    --brass: var(--metal);
+    --crt: radial-gradient(ellipse at 50% 34%, #26354D 0%, #1C273A 52%, #141C2B 100%);
+  }
+  :root { --brass: linear-gradient(145deg, #E9C886, #A77B3C 45%, #E2BD78); }
+  * { box-sizing: border-box; }
+  html { height: 100%; }
+  body {
+    margin: 0; min-height: 100%; display: flex; flex-direction: column;
+    background: radial-gradient(1100px 520px at 50% -12%, var(--glow), transparent 70%), var(--bg);
+    background-attachment: fixed;
+    color: var(--ink);
+    font: 16px/1.55 var(--font);
+    font-variant-numeric: lining-nums tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, p, table, dl, dd { margin: 0; font: inherit; }
+  button, input, select { font: inherit; color: inherit; }
+  ::selection { background: var(--selection); }
+  a { color: var(--accent); }
+
+  .bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 1.5rem;
+    width: 100%; max-width: 1100px; margin: 0 auto; padding: 1.6rem 1.75rem 0;
+  }
+  .bar h1 { font-size: 1.7rem; letter-spacing: 0.01em; color: var(--bright); }
+  .bar h1 small { font-size: 0.95rem; color: var(--dim); font-style: italic; margin-left: 0.6rem; letter-spacing: 0; }
+  .head-right { display: flex; align-items: center; gap: 1rem; min-width: 0; }
+  /* Colour-scheme switch: one knob that slides between sun, moon and the robot moon */
+  .theme {
+    position: relative; display: inline-flex; flex: none; padding: 3px; border: 1px solid var(--line); border-radius: 999px;
+    background: var(--sunk);
+  }
+  .theme button {
+    position: relative; z-index: 1; display: grid; place-items: center; width: 2.1rem; height: 1.75rem; padding: 0;
+    border: 0; border-radius: 999px; background: none; color: var(--dim); cursor: pointer; transition: color 0.2s;
+  }
+  .theme button:hover { color: var(--bright); }
+  .theme button[aria-checked="true"] { color: var(--on-accent); }
+  .theme button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .theme .knob {
+    position: absolute; top: 3px; left: 3px; width: 2.1rem; height: 1.75rem; border-radius: 999px;
+    background: var(--accent); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); transition: transform 0.25s cubic-bezier(.3, 1.4, .5, 1);
+  }
+  :root[data-theme="dark"] .theme .knob { transform: translateX(2.1rem); }
+  :root[data-theme="robot"] .theme .knob { transform: translateX(4.2rem); background: var(--brass); }
+  .theme svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .theme svg .solid { fill: currentColor; stroke: none; }
+  #chip {
+    padding: 0.3rem 0.95rem; border: 1px solid var(--edge); border-radius: 999px;
+    background: var(--screen); color: var(--dim); font-size: 0.9rem; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 100%; min-width: 0;
+  }
+  .keys { justify-content: center; gap: 2rem; padding: 0.5rem 1.75rem 1.75rem; font-size: 0.85rem; color: var(--dim); }
+  kbd {
+    display: inline-block; margin-right: 0.5rem; padding: 0 0.5rem;
+    border: 1px solid var(--edge); border-bottom-width: 2px; border-radius: 5px;
+    background: var(--screen); color: var(--ink); font: 0.8rem var(--mono);
+  }
+
+  main {
+    flex: 1; display: flex; flex-direction: column; gap: 1.25rem;
+    width: 100%; max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.75rem;
+  }
+
+  .prompt-row { display: flex; align-items: center; gap: 0.9rem; min-height: 3.2rem; }
+  #status { flex: 1; min-width: 0; font-size: 1.15rem; font-style: italic; color: var(--bright); overflow-wrap: anywhere; }
+  #status .badge {
+    display: inline-block; margin-right: 0.6rem; padding: 0 0.6rem; border-radius: 999px;
+    background: var(--badge-bg); color: var(--badge-fg); font-style: normal; font-size: 0.8rem; letter-spacing: 0.06em;
+    text-transform: uppercase; vertical-align: 0.1em;
+  }
+  .btn {
+    padding: 0.6rem 1.2rem; border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
+    background: var(--screen); color: var(--ink);
+  }
+  .btn:hover { background: var(--hover); border-color: var(--accent); }
+  .btn:focus-visible, #start:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  #start {
+    min-width: 10rem; padding: 0.75rem 1.9rem; border: 0; border-radius: 999px; cursor: pointer;
+    background: var(--accent); color: var(--on-accent); font-size: 1.05rem; letter-spacing: 0.02em;
+    box-shadow: 0 6px 18px var(--btn-shadow);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  #start:hover { background: var(--accent-hover); transform: translateY(-1px); }
+  #start:active { transform: translateY(1px); }
+  #start.running { background: var(--running); }
+
+  .box, .results {
+    position: relative; border: 1px solid var(--edge); border-radius: 16px; background: var(--screen);
+    box-shadow: 0 1px 0 var(--inset) inset, 0 10px 28px var(--shadow);
+  }
+  .box { padding: 1.1rem 1.4rem 1.1rem; }
+  .box > h2, .results > h2, .label {
+    font-size: 0.8rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+    display: flex; align-items: center; gap: 0.55rem; white-space: nowrap;
+  }
+
+  .readouts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1rem; }
+  .readouts .box { overflow: hidden; padding-top: 1.2rem; }
+  .readouts .box::before {
+    content: ""; position: absolute; left: 1.4rem; right: 1.4rem; top: 0; height: 3px; border-radius: 0 0 3px 3px;
+    background: var(--line); opacity: 0.6;
+  }
+  .readouts .box.down::before { background: var(--down); opacity: 1; }
+  .readouts .box.up::before { background: var(--up); opacity: 1; }
+  .readouts .box.lat::before { background: var(--lat); opacity: 0.85; }
+  .readouts .box.loss::before { background: var(--loss); opacity: 0.85; }
+  .value { margin-top: 0.3rem; white-space: nowrap; }
+  .num { font-size: clamp(2rem, 3.6vw, 2.8rem); line-height: 1.15; color: var(--bright); letter-spacing: -0.01em; }
+  .unit { margin-left: 0.2rem; color: var(--dim); font-style: italic; }
+  .sub { min-height: 1.5em; font-size: 0.88rem; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .key { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; flex: none; }
+  .key.down { background: var(--down); } .key.up { background: var(--up); }
+  .key.lat { background: var(--lat); } .key.loss { background: var(--loss); }
+
+  /* Connection */
+  .conn { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 1.5rem; margin-top: 0.8rem; }
+  .conn h3 { font-size: 1.05rem; color: var(--bright); margin-bottom: 0.35rem; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 1rem; font-size: 0.95rem; }
+  .facts dt { color: var(--dim); }
+  .facts dd { color: var(--ink); overflow-wrap: anywhere; }
+  .floor { font-size: 0.95rem; }
+  .floor .big { font-size: 1.6rem; color: var(--bright); }
+  .meter { position: relative; height: 10px; margin: 0.6rem 0 0.35rem; border-radius: 5px; background: var(--sunk); overflow: hidden; border: 1px solid var(--edge); }
+  .meter i { position: absolute; top: 0; bottom: 0; left: 0; }
+  .meter .phys { background: var(--phys); }
+  .meter .rest { background: var(--lat); opacity: 0.55; }
+  .meter-key { display: flex; gap: 1.2rem; font-size: 0.82rem; color: var(--dim); }
+  .meter-key span::before { content: ""; display: inline-block; width: 0.7rem; height: 0.5rem; margin-right: 0.35rem; border-radius: 2px; vertical-align: 0.05em; background: var(--phys); }
+  .meter-key span + span::before { background: var(--lat); opacity: 0.55; }
+  .muted { color: var(--dim); font-style: italic; }
+
+  /* Graph */
+  .chart { display: flex; flex-direction: column; gap: 0.75rem; }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .tools { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; font-size: 0.92rem; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--sunk); }
+  .seg button { border: 0; background: transparent; padding: 0.3rem 0.85rem; cursor: pointer; color: var(--ink); }
+  .seg button + button { border-left: 1px solid var(--edge); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .tools select { padding: 0.28rem 0.6rem; border: 1px solid var(--line); border-radius: 999px; background: var(--screen); color: var(--ink); }
+  .tools label { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--ink); cursor: pointer; }
+  .tools input[type=checkbox] { accent-color: var(--accent); }
+  .plot { position: relative; height: 34rem; }
+  .plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .plot canvas:focus-visible { outline: 1px solid var(--line); outline-offset: 4px; }
+  .chart-foot { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; min-height: 1.5em; font-size: 0.9rem; color: var(--dim); }
+  .legend { display: flex; gap: 1.1rem; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .legend .sw { width: 0.8rem; height: 0.8rem; border-radius: 3px; }
+  .legend .sw.lineSw { height: 3px; width: 1.1rem; border-radius: 2px; }
+  .legend .sw.tick { width: 3px; height: 0.8rem; border-radius: 1px; }
+  .legend .sw.dashSw { width: 1.1rem; height: 0; border-radius: 0; border-top: 1.5px dashed var(--dim); background: none; }
+  #readout { color: var(--bright); }
+
+  .progress { display: flex; align-items: center; gap: 1rem; }
+  .track { flex: 1; height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; display: flex; }
+  .track i { display: block; height: 100%; width: 0; transition: width 0.25s linear; }
+  #pIdle { background: var(--lat); opacity: 0.8; } #pDown { background: var(--down); } #pUp { background: var(--up); }
+  #pct { min-width: 3.2rem; text-align: right; color: var(--dim); font-size: 0.95rem; }
+
+  /* Comparison */
+  /* Comparison: two rank tiles, then one table */
+  .cmp-ranks { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-top: 0.9rem; }
+  .rank-tile { padding: 1rem 1.15rem 0.4rem; border: 1px solid var(--edge); border-radius: 12px; background: var(--sunk); }
+  .rank-tile .label { margin-bottom: 0.2rem; }
+  .rank-big { font-size: 2.3rem; line-height: 1.1; color: var(--bright); }
+  .rank-who { font-size: 0.95rem; color: var(--ink); }
+  .ptrack { position: relative; height: 8px; margin: 1rem 0 1.9rem; border-radius: 4px; background: var(--track); }
+  .ptrack .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+  .ptrack .mid { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--dim); opacity: 0.6; }
+  .ptrack .mark { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--screen); border: 3px solid; }
+  .ptrack .tick { position: absolute; top: 14px; font-size: 0.75rem; color: var(--dim); white-space: nowrap; }
+  .ptrack .tick.l { left: 0; } .ptrack .tick.c { left: 50%; transform: translateX(-50%); } .ptrack .tick.r { right: 0; }
+  .rank-also { margin: 0 0 0.8rem; font-size: 0.88rem; color: var(--dim); }
+  .cmp-table { width: 100%; margin-top: 1.1rem; border-collapse: collapse; font-size: 0.95rem; }
+  .cmp-table th { font-weight: normal; font-size: 0.78rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); text-align: right; padding: 0 0 0.45rem 1rem; white-space: nowrap; }
+  .cmp-table th:first-child, .cmp-table th:last-child { text-align: left; }
+  .cmp-table th.verdict { padding-left: 1.4rem; }
+  .cmp-table td { padding: 0.55rem 0 0.55rem 1rem; border-top: 1px solid var(--edge); text-align: right; white-space: nowrap; color: var(--ink); }
+  .cmp-table td:first-child { padding-left: 0; text-align: left; color: var(--bright); }
+  .cmp-table td:first-child small { display: block; font-size: 0.78rem; color: var(--dim); font-style: italic; }
+  .cmp-table td.you { color: var(--bright); font-size: 1.05rem; }
+  .cmp-table td.verdict { text-align: left; padding-left: 1.4rem; white-space: normal; }
+  .verdict span { display: inline-flex; align-items: baseline; gap: 0.4rem; }
+  .verdict .good { color: var(--up); } .verdict .bad { color: var(--loss); } .verdict .same { color: var(--dim); font-style: italic; }
+  .verdict b { font-weight: normal; font-size: 0.8rem; }
+  .cmp-note { margin-top: 0.9rem; font-size: 0.85rem; color: var(--dim); font-style: italic; }
+
+  /* Quality: the grade, then three uses */
+  .qual { display: grid; grid-template-columns: minmax(15rem, 1fr) 2.2fr; gap: 1.2rem; margin-top: 0.8rem; align-items: stretch; }
+  .grade { display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.1rem; border: 1px solid var(--edge); border-radius: 12px; background: var(--sunk); }
+  .grade .letter { flex: none; display: grid; place-items: center; width: 4.2rem; height: 4.2rem; border-radius: 50%; font-size: 2rem; color: #fff; }
+  .g-Ap .letter, .g-A .letter { background: var(--up); } .g-B .letter { background: color-mix(in srgb, var(--up) 55%, var(--lat)); }
+  .g-C .letter { background: var(--lat); } .g-D .letter { background: color-mix(in srgb, var(--lat) 40%, var(--loss)); } .g-F .letter { background: var(--loss); }
+  .grade .label { margin-bottom: 0.15rem; }
+  .gline { color: var(--bright); font-size: 1.05rem; } .gsub { color: var(--dim); font-size: 0.82rem; }
+  .uses { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.9rem; }
+  .use { padding: 0.8rem 1rem; border: 1px solid var(--edge); border-radius: 12px; background: var(--sunk); }
+  .use-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.3rem; }
+  .use-name { color: var(--bright); }
+  .pill { padding: 0.05rem 0.65rem; border-radius: 999px; font-size: 0.8rem; letter-spacing: 0.04em; }
+  .p-great { background: color-mix(in srgb, var(--up) 22%, transparent); color: var(--up); }
+  .p-good { background: color-mix(in srgb, var(--up) 14%, transparent); color: var(--up); }
+  .p-okay { background: color-mix(in srgb, var(--lat) 20%, transparent); color: var(--lat); }
+  .p-poor { background: color-mix(in srgb, var(--loss) 18%, transparent); color: var(--loss); }
+  .use-why { font-size: 0.85rem; color: var(--dim); }
+  .qnote { margin-top: 0.9rem; font-size: 0.9rem; color: var(--ink); }
+  /* Route */
+  table.route { width: 100%; margin-top: 0.7rem; border-collapse: collapse; font-size: 0.92rem; }
+  table.route th { font-weight: normal; font-size: 0.78rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); text-align: left; padding: 0 0.8rem 0.4rem 0; }
+  table.route td { padding: 0.4rem 0.8rem 0.4rem 0; border-top: 1px solid var(--edge); vertical-align: middle; white-space: nowrap; }
+  table.route .n { text-align: right; } table.route td:first-child { color: var(--dim); width: 2.5rem; }
+  table.route .who { white-space: normal; overflow-wrap: anywhere; color: var(--ink); }
+  table.route .who small { display: block; color: var(--dim); font-size: 0.78rem; }
+  table.route .pings { color: var(--dim); font-size: 0.85rem; }
+  table.route .barcell { width: 34%; }
+  .barwrap { display: flex; align-items: center; gap: 0.5rem; }
+  .hbar { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--lat); opacity: 0.75; }
+  tr.dest .hbar { background: var(--up); opacity: 1; }
+  tr.jump .hbar { background: var(--loss); opacity: 0.85; }
+  .jumpnote, .slownote { flex: none; font-size: 0.78rem; white-space: nowrap; }
+  .jumpnote { color: var(--loss); } .slownote { color: var(--dim); font-style: italic; }
+  tr.slowhop .hbar { opacity: 0.35; }
+  .tagline { margin-left: 0.5rem; padding: 0 0.5rem; border-radius: 999px; font-size: 0.72rem; background: color-mix(in srgb, var(--up) 20%, transparent); color: var(--up); }
+  .head-actions { display: flex; gap: 1.1rem; }
+  :root[data-theme="robot"] .grade, :root[data-theme="robot"] .use { background: rgba(17, 24, 39, 0.45); border-color: #334155; }
+
+  /* Brand mark and section icons, drawn from the Delta family; they take each scheme's accent */
+  .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+  :root { --mark: var(--accent); }
+  :root[data-theme="dark"] { --mark: #C9A07F; }
+  :root[data-theme="robot"] { --mark: #C9B68E; }
+  .bar h1 { display: flex; align-items: center; gap: 0.65rem; }
+  .bar h1 small { align-self: flex-end; margin-bottom: 0.3rem; }
+  .mark { flex: none; width: 2.6rem; height: 1.82rem; color: var(--mark); }
+  .mark path, .sicon path { vector-effect: non-scaling-stroke; }
+  .mark path { stroke-width: 2.1px; }
+  .sicon { flex: none; width: 1.7rem; height: 1.19rem; color: var(--mark); margin-right: 0.1rem; }
+  .sicon path { stroke-width: 1.85px; }
+  .sicon.down { color: var(--down); } .sicon.up { color: var(--up); }
+  .results-head h2 { display: flex; align-items: center; gap: 0.55rem; }
+  :root[data-theme="robot"] .readouts .sicon.down { filter: drop-shadow(0 0 4px rgba(137, 168, 201, 0.6)); }
+  :root[data-theme="robot"] .readouts .sicon.up { filter: drop-shadow(0 0 4px rgba(143, 183, 163, 0.6)); }
+
+  /* Legal: how the app uses Cloudflare services, independence and trademark attribution */
+  .legal { width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 1.75rem 1.8rem; text-align: center; font-size: 0.78rem; line-height: 1.6; color: var(--dim); }
+  .legal p + p { margin-top: 0.25rem; }
+
+  /* Guide: what the numbers mean */
+  .info {
+    display: inline-grid; place-items: center; width: 1.05rem; height: 1.05rem; margin-left: 0.15rem; border-radius: 50%;
+    border: 1px solid var(--line); color: var(--dim); font-size: 0.68rem; letter-spacing: 0; text-decoration: none; text-transform: none; font-style: normal;
+  }
+  .info:hover, .info:focus-visible { color: var(--bright); border-color: var(--accent); outline: none; }
+  .guide-intro { margin: 0.8rem 0 1.2rem; color: var(--ink); max-width: 46rem; line-height: 1.7; }
+  .guide details { border-top: 1px solid var(--edge); }
+  .guide details:last-of-type { border-bottom: 1px solid var(--edge); }
+  .guide summary { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 1.5rem; align-items: center; padding: 1rem 0.3rem; cursor: pointer; list-style: none; }
+  .guide summary::-webkit-details-marker { display: none; }
+  .guide summary::after {
+    content: "+"; grid-column: 2; grid-row: 1 / span 2; display: grid; place-items: center; width: 1.8rem; height: 1.8rem;
+    border: 1px solid var(--line); border-radius: 50%; color: var(--dim); font-size: 1.05rem; line-height: 1;
+  }
+  .guide details[open] summary::after { content: "\2212"; color: var(--bright); border-color: var(--accent); }
+  .guide summary:hover .g-name { color: var(--accent); }
+  :root[data-theme="dark"] .guide summary:hover .g-name, :root[data-theme="robot"] .guide summary:hover .g-name { color: var(--accent-hover); }
+  .guide summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .g-name { grid-column: 1; color: var(--bright); font-size: 1.12rem; }
+  .g-why { grid-column: 1; color: var(--dim); font-size: 0.93rem; }
+  .g-body { padding: 0.2rem 0.3rem 1.6rem; display: grid; gap: 1rem; font-size: 0.97rem; line-height: 1.7; }
+  .g-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .g-grid.one { grid-template-columns: minmax(0, 46rem); }
+  .g-card, .g-steps { padding: 1rem 1.2rem 1.05rem; border: 1px solid var(--edge); border-radius: 12px; background: var(--sunk); }
+  .g-body h4 { margin: 0 0 0.45rem; font-weight: normal; font-size: 0.76rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+  .g-card p { margin: 0; color: var(--ink); }
+  .g-steps ul { margin: 0; padding-left: 1.15rem; display: grid; gap: 0.55rem; max-width: 60rem; }
+  .g-steps li { color: var(--ink); padding-left: 0.2rem; }
+  .g-steps li::marker { color: var(--accent); }
+  .g-body b { font-weight: normal; color: var(--bright); }
+  .g-body code { font-family: var(--mono); font-size: 0.85em; padding: 0.1rem 0.4rem; border-radius: 5px; background: var(--screen); border: 1px solid var(--edge); white-space: nowrap; }
+  .g-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+  .g-links-label { font-size: 0.76rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-right: 0.3rem; }
+  .g-link {
+    display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.85rem; border: 1px solid var(--line); border-radius: 999px;
+    color: var(--ink); text-decoration: none; font-size: 0.88rem; line-height: 1.4; background: var(--screen);
+  }
+  .g-link::after { content: "\2197"; color: var(--dim); font-size: 0.85em; }
+  .g-link:hover, .g-link:focus-visible { border-color: var(--accent); color: var(--bright); outline: none; }
+  :root[data-theme="robot"] .g-card, :root[data-theme="robot"] .g-steps { background: rgba(17, 24, 39, 0.45); border-color: #334155; }
+  :root[data-theme="robot"] .g-link { background: rgba(17, 24, 39, 0.55); border-color: #334155; }
+  @media (max-width: 760px) { .g-grid { grid-template-columns: 1fr; } }
+
+  /* Guide additions: primer, layer chips, quick scales */
+  .g-lead { margin: 0 0 0.75rem; color: var(--bright); }
+  .chip { display: inline-block; margin-left: 0.5rem; padding: 0.05rem 0.55rem; border-radius: 999px; border: 1px solid var(--line); font-size: 0.68rem; letter-spacing: 0.06em; color: var(--ink); vertical-align: 0.1em; text-transform: none; }
+  .layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+  .layers li { display: grid; grid-template-columns: 6.6rem 1fr; gap: 0.1rem 0.8rem; padding: 0.55rem 0.7rem; border-radius: 8px; background: var(--screen); border: 1px solid var(--edge); }
+  .lay { grid-row: span 2; align-self: center; color: var(--accent); font-size: 0.9rem; }
+  :root[data-theme="dark"] .lay, :root[data-theme="robot"] .lay { color: var(--accent-hover); }
+  .lay-what { color: var(--ink); font-size: 0.92rem; line-height: 1.5; }
+  .lay-here { color: var(--dim); font-size: 0.82rem; font-style: italic; }
+  .delays { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+  .delays li { padding: 0.45rem 0.7rem; border-radius: 8px; background: var(--screen); border: 1px solid var(--edge); font-size: 0.92rem; line-height: 1.55; }
+  .delays li b { display: inline-block; min-width: 6.6rem; color: var(--accent); }
+  :root[data-theme="dark"] .delays li b, :root[data-theme="robot"] .delays li b { color: var(--accent-hover); }
+  .g-body a:not(.g-link) { color: var(--accent); }
+  :root[data-theme="dark"] .g-body a:not(.g-link), :root[data-theme="robot"] .g-body a:not(.g-link) { color: var(--accent-hover); }
+  .g-scale { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .lvl { padding: 0.3rem 0.85rem; border-radius: 999px; font-size: 0.86rem; border: 1px solid transparent; }
+  .lvl.good { background: color-mix(in srgb, var(--up) 16%, transparent); color: var(--up); border-color: color-mix(in srgb, var(--up) 35%, transparent); }
+  .lvl.ok { background: color-mix(in srgb, var(--lat) 14%, transparent); color: var(--lat); border-color: color-mix(in srgb, var(--lat) 35%, transparent); }
+  .lvl.bad { background: color-mix(in srgb, var(--loss) 12%, transparent); color: var(--loss); border-color: color-mix(in srgb, var(--loss) 35%, transparent); }
+  .g-steps li b { color: var(--bright); }
+  .g-links-label + .g-link { margin-left: 0; }
+  .g-links .g-links-label:not(:first-child) { margin-left: 0.8rem; }
+  :root[data-theme="robot"] .layers li, :root[data-theme="robot"] .delays li { background: rgba(17, 24, 39, 0.55); border-color: #334155; }
+
+  .g-idea { display: flex; gap: 0.8rem; align-items: baseline; padding: 0.7rem 0.9rem; border-radius: 10px; background: var(--sunk); border: 1px solid var(--edge); }
+  .g-idea .chip { flex: none; margin: 0; }
+  .g-idea p { margin: 0; line-height: 1.55; }
+  .g-fix { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.3rem; line-height: 1.5; }
+  .g-fix b { color: var(--bright); }
+  :root[data-theme="robot"] .g-idea { background: rgba(17, 24, 39, 0.55); border-color: #334155; }
+  @media (max-width: 640px) { .g-idea { flex-direction: column; gap: 0.4rem; } }
+  /* Waiting: a comet running round a faint ring, its head glowing */
+  .waiting { display: inline-flex; align-items: center; gap: 0.6rem; color: var(--dim); font-style: italic; }
+  .spin {
+    --spin: var(--accent); --spin-speed: 1s;
+    position: relative; display: inline-block; flex: none; width: 1.05em; height: 1.05em; vertical-align: -0.17em;
+    border-radius: 50%; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--spin) 16%, transparent);
+  }
+  .spin::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 0deg 60deg, color-mix(in srgb, var(--spin) 20%, transparent) 180deg, var(--spin) 354deg, transparent 360deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.3px), #000 calc(100% - 2px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 2.3px), #000 calc(100% - 2px));
+    animation: spin-turn var(--spin-speed) linear infinite;
+  }
+  .spin::after {
+    content: ""; position: absolute; left: 50%; top: -0.6px; width: 3.6px; height: 3.6px; margin-left: -1.8px; border-radius: 50%;
+    background: var(--spin); box-shadow: 0 0 6px 1px var(--spin);
+    transform-origin: 1.8px calc(0.525em + 0.6px); animation: spin-turn var(--spin-speed) linear infinite;
+  }
+  .spin svg { display: none; }
+  .spin.down { --spin: var(--down); } .spin.up { --spin: var(--up); } .spin.lat { --spin: var(--lat); }
+  @keyframes spin-turn { to { transform: rotate(360deg); } }
+  /* Robot: two brass gears, meshed, turning against each other */
+  :root[data-theme="robot"] .spin { width: 1.55em; box-shadow: none; border-radius: 0; }
+  :root[data-theme="robot"] .spin::before, :root[data-theme="robot"] .spin::after { display: none; }
+  :root[data-theme="robot"] .spin svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 1px 1px rgba(3, 7, 16, 0.6)); }
+  .spin svg g { transform-box: fill-box; transform-origin: center; }
+  .spin svg .g1 { animation: spin-turn 2.4s linear infinite; }
+  .spin svg .g2 { animation: spin-turn 1.68s linear infinite reverse; }
+  @media (prefers-reduced-motion: reduce) {
+    .spin { --spin-speed: 2.6s; } .spin svg .g1 { animation-duration: 6s; } .spin svg .g2 { animation-duration: 4.2s; }
+  }
+
+  /* Results table */
+  .results { padding: 1.1rem 1.4rem 0.7rem; }
+  .results-head { display: flex; justify-content: space-between; align-items: center; }
+  .linkish { border: 0; background: none; color: var(--dim); cursor: pointer; font-style: italic; padding: 0; }
+  .linkish:hover { color: var(--accent); text-decoration: underline; }
+  .results table { width: 100%; margin-top: 0.5rem; border-collapse: collapse; }
+  .results th { font-size: 0.82rem; font-weight: normal; color: var(--dim); text-align: left; letter-spacing: 0.04em; }
+  .results th, .results td { padding: 0.55rem 1.1rem 0.55rem 0; white-space: nowrap; }
+  .results th:last-child, .results td:last-child { padding-right: 0.2rem; }
+  .results .n { text-align: right; }
+  .results tbody tr.row { cursor: pointer; border-top: 1px solid var(--edge); }
+  .results tbody tr.row:hover { background: var(--rowhi); }
+  .results tbody tr.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .results tbody tr.row td:first-child::before { content: "\25B8"; display: inline-block; width: 1.1rem; color: var(--dim); transition: transform 0.15s; }
+  .results tbody tr.row.open td:first-child::before { transform: rotate(90deg); }
+  .results tbody tr.row.open { background: var(--rowhi); }
+  .results .srv { color: var(--dim); overflow: hidden; text-overflow: ellipsis; max-width: 16rem; }
+  .results .empty { color: var(--dim); font-style: italic; padding: 0.9rem 0; }
+  tr.detail td { padding: 0 0 1.1rem; white-space: normal; background: var(--rowhi); }
+  .detail-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1.2rem 1.6rem; padding: 0.4rem 1.1rem 0; }
+  .detail-grid h4 { margin: 0 0 0.3rem; font-weight: normal; font-size: 0.78rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--dim); }
+  .detail-grid .facts { font-size: 0.88rem; gap: 0.1rem 0.8rem; }
+  .detail-actions { display: flex; gap: 0.8rem; align-items: center; padding: 0.9rem 1.1rem 0; flex-wrap: wrap; }
+  .detail-actions .warn { color: var(--warn); font-size: 0.88rem; font-style: italic; }
+
+  /* Settings */
+  dialog {
+    border: 1px solid var(--edge); border-radius: 18px; padding: 0; width: min(36rem, 94vw);
+    background: var(--screen); color: var(--ink); box-shadow: 0 24px 60px var(--dlg-shadow);
+  }
+  dialog::backdrop { background: var(--backdrop); }
+  dialog form { padding: 1.5rem 1.7rem 1.3rem; display: flex; flex-direction: column; gap: 1rem; }
+  dialog h2 { font-size: 1.4rem; color: var(--bright); }
+  .field { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 1rem; align-items: center; }
+  .field > label { color: var(--bright); }
+  .field .help { grid-column: 1 / -1; font-size: 0.85rem; color: var(--dim); }
+  .field input[type=number], .field input[type=password], .field input[type=text] {
+    width: 6.5rem; padding: 0.35rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--field); text-align: right;
+  }
+  .field.wide { grid-template-columns: 1fr; }
+  .field.wide input { width: 100%; text-align: left; }
+  .field input[type=range] { width: 100%; accent-color: var(--accent); grid-column: 1 / -1; }
+  .field output { color: var(--bright); }
+  .est { font-size: 0.9rem; padding: 0.6rem 0.8rem; border-radius: 10px; background: var(--sunk); color: var(--ink); }
+  .dlg-actions { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-top: 0.3rem; }
+  .dlg-actions div { display: flex; gap: 0.6rem; }
+  #sErr { color: var(--loss); font-size: 0.9rem; }
+
+  /* ---- Robot: valve televisions, satin metal and midnight glass ---- */
+  :root[data-theme="robot"] body {
+    background:
+      radial-gradient(1100px 600px at 50% -14%, rgba(137, 168, 201, 0.16), transparent 70%),
+      radial-gradient(900px 500px at 50% 110%, rgba(227, 185, 126, 0.06), transparent 70%),
+      #111827;
+  }
+  :root[data-theme="robot"] .bar h1 { letter-spacing: 0.04em; color: #EEF3F8; }
+  :root[data-theme="robot"] .bar h1 small { color: #C9B68E; }
+  /* Every panel: a rounded picture tube inside a thin metal frame, with a second line round it */
+  :root[data-theme="robot"] .box, :root[data-theme="robot"] .results {
+    border: 5px solid transparent; border-radius: 30px;
+    background: var(--crt) padding-box, var(--metal) border-box;
+    box-shadow: 0 0 0 3px #111827, 0 0 0 4.5px #B9A57F, 0 16px 34px rgba(3, 7, 16, 0.55),
+                inset 0 0 0 1px rgba(0, 0, 0, 0.5), inset 0 0 40px rgba(3, 7, 16, 0.7);
+  }
+  :root[data-theme="robot"] .box::after, :root[data-theme="robot"] .results::after {   /* glass: a soft reflection and faint scanlines */
+    content: ""; position: absolute; inset: 0; border-radius: 25px; pointer-events: none; z-index: 2;
+    background:
+      radial-gradient(60% 45% at 22% 12%, rgba(238, 243, 248, 0.07), transparent 70%),
+      repeating-linear-gradient(0deg, rgba(5, 9, 18, 0.16) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse at 50% 50%, transparent 64%, rgba(5, 9, 18, 0.4) 100%);
+  }
+  :root[data-theme="robot"] .readouts .box { overflow: visible; border-radius: 24px; }
+  :root[data-theme="robot"] .readouts .box::after { border-radius: 19px; }
+  :root[data-theme="robot"] .sub { font-size: 0.82rem; }
+  :root[data-theme="robot"] .readouts .box::before {   /* a little valve glow in the corner */
+    left: auto; right: 1rem; top: 1rem; width: 0.55rem; height: 0.55rem; border-radius: 50%; opacity: 1;
+    background: radial-gradient(circle at 40% 35%, #FFF1D6, #E3B97E 55%, #9A6B33);
+    box-shadow: 0 0 10px rgba(255, 176, 96, 0.7), 0 0 0 2px #111827, 0 0 0 3px #A69172;
+  }
+  :root[data-theme="robot"] .readouts .box.down::before { background: radial-gradient(circle at 40% 35%, #F2F7FC, #89A8C9 60%); box-shadow: 0 0 10px rgba(137, 168, 201, 0.8), 0 0 0 2px #111827, 0 0 0 3px #A69172; }
+  :root[data-theme="robot"] .readouts .box.up::before { background: radial-gradient(circle at 40% 35%, #F1FBF5, #8FB7A3 60%); box-shadow: 0 0 10px rgba(143, 183, 163, 0.8), 0 0 0 2px #111827, 0 0 0 3px #A69172; }
+  :root[data-theme="robot"] .readouts .box.loss::before { background: radial-gradient(circle at 40% 35%, #FFF0F0, #E08A8A 60%); box-shadow: 0 0 10px rgba(224, 138, 138, 0.7), 0 0 0 2px #111827, 0 0 0 3px #A69172; }
+  :root[data-theme="robot"] .num { color: #F7FAFC; text-shadow: 0 0 14px rgba(137, 168, 201, 0.45); }
+  :root[data-theme="robot"] .readouts .box.up .num { text-shadow: 0 0 14px rgba(143, 183, 163, 0.5); }
+  :root[data-theme="robot"] .readouts .box.lat .num { text-shadow: 0 0 14px rgba(227, 185, 126, 0.4); }
+  :root[data-theme="robot"] .box > h2, :root[data-theme="robot"] .results > h2, :root[data-theme="robot"] .results-head h2, :root[data-theme="robot"] .label { color: #C9B68E; }
+  /* Buttons: satin metal, the main one in dusty blue */
+  :root[data-theme="robot"] .btn, :root[data-theme="robot"] .seg button[aria-pressed="true"] {
+    background: var(--metal-soft); color: #111827; border: 1px solid #8C7A58;
+    box-shadow: inset 0 1px 0 rgba(255, 250, 235, 0.6), 0 2px 8px rgba(3, 7, 16, 0.45);
+  }
+  :root[data-theme="robot"] #start { background: linear-gradient(180deg, #B9CDE3, #89A8C9); color: #111827; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 0 0 2px #111827, 0 0 0 3.5px #B9A57F, 0 8px 22px rgba(3, 7, 16, 0.5); }
+  :root[data-theme="robot"] #start:hover { background: linear-gradient(180deg, #CCDBEB, #AFC3DA); }
+  :root[data-theme="robot"] #start.running { background: linear-gradient(180deg, #8FA6BF, #6F8DAE); }
+  :root[data-theme="robot"] .btn:hover { filter: brightness(1.06); }
+  :root[data-theme="robot"] .seg { background: #161F2E; border-color: #334155; }
+  :root[data-theme="robot"] .seg button[aria-pressed="true"] { border: 0; box-shadow: none; }
+  :root[data-theme="robot"] #chip { border-color: #334155; background: #1B2536; color: #B7C3D1; }
+  :root[data-theme="robot"] .track { background: #1B2536; border: 1px solid #334155; height: 9px; }
+  :root[data-theme="robot"] .theme { background: #1B2536; border-color: #334155; }
+  :root[data-theme="robot"] .theme .knob { background: var(--metal-soft); }
+  :root[data-theme="robot"] .theme button[aria-checked="true"] { color: #111827; }
+  :root[data-theme="robot"] dialog { border: 5px solid transparent; border-radius: 26px; background: var(--crt) padding-box, var(--metal) border-box; box-shadow: 0 0 0 3px #111827, 0 0 0 4.5px #B9A57F, 0 24px 60px rgba(0, 0, 0, 0.6); }
+  :root[data-theme="robot"] .rank-tile { background: rgba(17, 24, 39, 0.45); border-color: #334155; border-radius: 14px; }
+  :root[data-theme="robot"] .results tbody tr.row:hover { background: rgba(137, 168, 201, 0.08); }
+  :root[data-theme="robot"] tr.detail td, :root[data-theme="robot"] .results tbody tr.row.open { background: rgba(137, 168, 201, 0.06); }
+
+  /* The graph is the main set: narrower, with a finial on top, standing on its console */
+  :root[data-theme="robot"] .box.chart { margin: 0 5.2rem; }
+  :root[data-theme="robot"] .box.chart::before {
+    content: ""; position: absolute; top: -17px; left: 50%; width: 22px; height: 11px; margin-left: -11px; z-index: 1;
+    border-radius: 11px 11px 2px 2px; background: var(--metal); box-shadow: 0 0 0 1px #8C7A58, 0 -6px 0 -3px #C9B68E;
+  }
+  .console { display: none; }
+  :root[data-theme="robot"] .console {
+    position: relative; display: flex; align-items: center; gap: 1.1rem; height: 6.2rem; margin-top: calc(-1.25rem + 6px); padding: 0 1.4rem;
+    border-radius: 12px 12px 18px 18px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px),
+      linear-gradient(180deg, rgba(255, 250, 235, 0.5), transparent 14%, transparent 80%, rgba(0, 0, 0, 0.3)),
+      linear-gradient(160deg, #DCCDAA, #B9A57F 50%, #9C8865);
+    box-shadow: 0 0 0 1px #7C6B4E, inset 0 -6px 0 rgba(60, 48, 30, 0.35), 0 16px 34px rgba(3, 7, 16, 0.55);
+  }
+  .console .grille {
+    flex: 1.3; min-width: 4rem; height: 3.8rem; border-radius: 10px;
+    background: radial-gradient(circle, #2A2A28 0 1.6px, transparent 2.1px) 0 0 / 7px 7px, linear-gradient(180deg, #8E7B5A, #B7A37D);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 250, 235, 0.45);
+  }
+  .console .knob {
+    flex: none; position: relative; width: 2.2rem; height: 2.2rem; border-radius: 50%;
+    background: radial-gradient(circle at 38% 30%, #FFF6E2, #D6C49C 35%, #8E7A57 80%);
+    box-shadow: 0 0 0 3px #3A3326, 0 0 0 4px #CDBB95, 0 3px 6px rgba(0, 0, 0, 0.45);
+  }
+  .console .knob::after { content: ""; position: absolute; left: 50%; top: 3px; width: 2px; height: 0.7rem; margin-left: -1px; border-radius: 1px; background: #3A3326; transform-origin: 1px calc(1.1rem - 3px); transform: rotate(var(--turn, -40deg)); transition: transform 0.6s; }
+  .console .knob.b { --turn: 25deg; } .console .knob.c { --turn: 70deg; } .console .knob.d { --turn: -10deg; }
+  .console .vu {
+    flex: none; position: relative; width: 6.6rem; height: 4.4rem; border-radius: 10px 10px 6px 6px; overflow: hidden;
+    background: radial-gradient(120% 90% at 50% 100%, #FBF3DD, #E9DCB9 70%, #D2C095);
+    box-shadow: 0 0 0 3px #2E2A22, 0 0 0 5px #CDBB95, inset 0 3px 8px rgba(0, 0, 0, 0.3);
+  }
+  .console .vu svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .console .needle {
+    position: absolute; left: 50%; bottom: 0.45rem; width: 2px; height: 2.45rem; margin-left: -1px; border-radius: 1px;
+    background: #8A2F25; transform-origin: 50% 100%; transform: rotate(var(--deg, -52deg)); transition: transform 0.35s cubic-bezier(.3, 1.3, .5, 1);
+  }
+  .console .vu::after { content: ""; position: absolute; left: 50%; bottom: 0.15rem; width: 0.7rem; height: 0.7rem; margin-left: -0.35rem; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #E6DABD, #6E5E44); }
+  .console .mlabel { position: absolute; left: 0.45rem; top: 0.35rem; font: 0.58rem/1 var(--mono); letter-spacing: 0.12em; color: #5A5040; }
+  .console .mval { position: absolute; right: 0.45rem; top: 0.35rem; font: 0.66rem/1 var(--mono); color: #2B2620; }
+  /* Valves standing at both ends, glowing warmer while a test runs */
+  .console .tube { position: absolute; bottom: calc(100% - 4px); width: 2.6rem; height: 6.2rem; }
+  .console .tube.l { left: 1.3rem; } .console .tube.r { right: 1.3rem; }
+  .console .tube::before {   /* the glass */
+    content: ""; position: absolute; left: 0.2rem; right: 0.2rem; top: 0; bottom: 0.9rem; border-radius: 0.9rem 0.9rem 0.3rem 0.3rem;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04) 30%, rgba(255, 255, 255, 0.02) 70%, rgba(255, 255, 255, 0.14));
+    box-shadow: inset 0 0 0 1px rgba(214, 226, 240, 0.35), 0 0 22px rgba(255, 160, 80, var(--tube-glow, 0.25));
+  }
+  .console .tube::after {   /* the metal socket */
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1rem; border-radius: 3px 3px 5px 5px;
+    background: var(--metal); box-shadow: 0 0 0 1px #7C6B4E;
+  }
+  .console .tube i {   /* the filament */
+    position: absolute; left: 50%; top: 1.3rem; width: 0.7rem; height: 3rem; margin-left: -0.35rem; border-radius: 0.25rem;
+    border: 1.5px solid rgba(255, 190, 120, 0.9); border-top-width: 0;
+    background: radial-gradient(ellipse at 50% 60%, rgba(255, 170, 90, var(--tube-core, 0.55)), transparent 70%);
+    box-shadow: 0 0 12px rgba(255, 150, 70, var(--tube-glow, 0.25));
+  }
+  :root[data-theme="robot"] .console.on { --tube-glow: 0.75; --tube-core: 0.95; }
+  :root[data-theme="robot"] .console.on .tube i { animation: tube-flicker 2.6s infinite; }
+  @keyframes tube-flicker { 0%, 100% { opacity: 1; } 47% { opacity: 0.92; } 50% { opacity: 0.8; } 53% { opacity: 0.95; } }
+
+  @media (max-width: 980px) {
+    .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .conn, .cmp-ranks, .qual { grid-template-columns: 1fr; }
+    table.route .barcell { display: none; }
+    .cmp-table .verdict { display: none; }
+    .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    .readouts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .prompt-row { flex-wrap: wrap; }
+    #status { flex-basis: 100%; }
+    .detail-grid { grid-template-columns: 1fr; }
+    .uses { grid-template-columns: 1fr; }
+    .results .hide-sm { display: none; }
+    .keys { display: none; }
+  }
+  @media (max-width: 640px) { #chip { display: none; } }
+  @media (max-width: 760px) {
+    :root[data-theme="robot"] .box.chart { margin: 0; }
+    :root[data-theme="robot"] .console .tube, :root[data-theme="robot"] .console .grille, :root[data-theme="robot"] .console .knob { display: none; }
+    :root[data-theme="robot"] .console { justify-content: center; }
+  }
+  @media (prefers-reduced-motion: reduce) { .console .tube i { animation: none !important; } .console .needle, .console .knob::after { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { #start, .track i, .theme button, .theme .knob { transition: none; } }
+</style>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false"><symbol id="i-delta" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16 H12 C17.5 16 17.5 7 23 7 H34"/><path d="M6 22 H15 C20.5 22 20.5 13 26 13 H34"/></g></symbol><symbol id="i-ping" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9.5 H25 Q30 9.5 30 14 Q30 18.5 25 18.5 H9"/><path d="M11.5 16 L9 18.5 L11.5 21"/><circle cx="34.5" cy="14" r="1.6" fill="currentColor" stroke="none"/></g></symbol><symbol id="i-jitter" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17 H8.5 C10.5 17 10.5 11 12.5 11 S14.5 17 16.5 17 H18 C20 17 20.5 6.5 22.5 6.5 S25 17 27 17 C28.3 17 28.6 13 29.9 13 S31.5 17 32.8 17 H35"/></g></symbol><symbol id="i-loss" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11 H13"/><path d="M17 11 H21"/><path d="M29 11 H35"/><circle cx="25" cy="19.5" r="1.6" fill="currentColor" stroke="none"/></g></symbol><symbol id="i-down" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7 H12 C17.5 7 17.5 16 23 16 H35"/><path d="M5 13 H15 C20.5 13 20.5 22 26 22 H35"/></g></symbol><symbol id="i-up" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16 H12 C17.5 16 17.5 7 23 7 H35"/><path d="M5 22 H15 C20.5 22 20.5 13 26 13 H35"/></g></symbol><symbol id="i-gauge" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 21 A11.5 11.5 0 0 1 31.5 21"/><path d="M20 21 L26.2 12.8"/><circle cx="20" cy="21" r="1.6" fill="currentColor" stroke="none"/><path d="M5 21 H6"/><path d="M34 21 H35"/></g></symbol><symbol id="i-handshake" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9 H12 C17 9 19 14 23 14 H26"/><path d="M35 19 H28 C23 19 21 14 17 14 H14"/></g></symbol><symbol id="i-route" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20 H8 L15.5 9 L24.5 17.5 L31.5 9 H35"/><circle cx="8" cy="20" r="1.9" fill="currentColor" stroke="none"/><circle cx="15.5" cy="9" r="1.9" fill="currentColor" stroke="none"/><circle cx="24.5" cy="17.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="31.5" cy="9" r="1.9" fill="currentColor" stroke="none"/></g></symbol><symbol id="i-phase" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13 C10 13 11 6 16 6 S22 13 27 13 H35"/><path d="M5 21 H10 C15 21 16 14 21 14 S27 21 32 21 H35"/></g></symbol><symbol id="i-rank" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7.5 H31"/><path d="M5 14 H24"/><path d="M5 20.5 H18"/><circle cx="34" cy="7.5" r="1.6" fill="currentColor" stroke="none"/></g></symbol><symbol id="i-history" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22 H35"/><path d="M10 22 V16"/><path d="M16 22 V11"/><path d="M22 22 V14"/><path d="M28 22 V8.5"/></g></symbol></svg>
+<header class="bar">
+  <h1><svg class="mark" aria-hidden="true" focusable="false"><use href="#i-delta"/></svg>Speed Test <small>native engine</small></h1>
+  <div class="head-right">
+    <span id="chip">speed.cloudflare.com</span>
+    <div class="theme" role="radiogroup" aria-label="Colour scheme" id="themes">
+      <span class="knob" aria-hidden="true"></span>
+      <button type="button" role="radio" data-theme="light" title="Light" aria-label="Light"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+      <button type="button" role="radio" data-theme="dark" title="Dark" aria-label="Dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+      <button type="button" role="radio" data-theme="robot" title="Robot" aria-label="Robot"><svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>
+        <path d="M14.1 14.7l2.9-2.9h2.2M11.2 12.8l3.6-3.6M9.4 9.9l2.4-2.4V5.6" stroke-width="1.3"/>
+        <circle class="solid" cx="19.9" cy="11.8" r="1.15"/><circle class="solid" cx="15.5" cy="8.5" r="1.15"/><circle class="solid" cx="11.8" cy="4.6" r="1.15"/>
+      </svg></button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="prompt-row">
+    <p id="status" role="status">Ready.</p>
+    <button class="btn" id="settingsBtn" type="button">Settings</button>
+    <button id="start" type="button">Start test</button>
+  </div>
+
+  <div class="readouts">
+    <section class="box lat">
+      <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-ping"/></svg>Ping<a class="info" href="#g-ping" aria-label="What ping means" title="What this means">?</a></h2>
+      <p class="value"><span class="num" id="ping">--</span><span class="unit">ms</span></p>
+      <p class="sub" id="pingSub">idle median</p>
+    </section>
+    <section class="box lat">
+      <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-jitter"/></svg>Jitter<a class="info" href="#g-jitter" aria-label="What jitter means" title="What this means">?</a></h2>
+      <p class="value"><span class="num" id="jitter">--</span><span class="unit">ms</span></p>
+      <p class="sub" id="jitterSub">idle</p>
+    </section>
+    <section class="box loss">
+      <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-loss"/></svg>Packet loss<a class="info" href="#g-loss" aria-label="What packet loss means" title="What this means">?</a></h2>
+      <p class="value"><span class="num" id="loss">--</span><span class="unit">%</span></p>
+      <p class="sub" id="lossSub"></p>
+    </section>
+    <section class="box down">
+      <h2><svg class="sicon down" aria-hidden="true" focusable="false"><use href="#i-down"/></svg>Download<a class="info" href="#g-speed" aria-label="What download means" title="What this means">?</a></h2>
+      <p class="value"><span class="num" id="down">--</span><span class="unit">Mbps</span></p>
+      <p class="sub" id="downSub"></p>
+    </section>
+    <section class="box up">
+      <h2><svg class="sicon up" aria-hidden="true" focusable="false"><use href="#i-up"/></svg>Upload<a class="info" href="#g-speed" aria-label="What upload means" title="What this means">?</a></h2>
+      <p class="value"><span class="num" id="up">--</span><span class="unit">Mbps</span></p>
+      <p class="sub" id="upSub"></p>
+    </section>
+  </div>
+
+  <section class="box" id="qualityBox">
+    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-gauge"/></svg>Connection quality<a class="info" href="#g-bloat" aria-label="What the quality grades means" title="What this means">?</a></h2>
+    <div id="quality"></div>
+  </section>
+
+  <section class="box">
+    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-handshake"/></svg>Connection<a class="info" href="#g-distance" aria-label="What distance means" title="What this means">?</a></h2>
+    <div class="conn" id="conn">
+      <div><h3>You</h3><p class="muted">Shown when a test starts.</p></div>
+      <div><h3>Server</h3><p class="muted">The data centre that answers you.</p></div>
+      <div><h3>Distance</h3><p class="muted">How far apart you are, and the fastest ping physics allows.</p></div>
+    </div>
+  </section>
+
+  <section class="box" id="routeBox">
+    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-route"/></svg>Route to the server<a class="info" href="#g-route" aria-label="What the route means" title="What this means">?</a></h2>
+    <div id="route"></div>
+  </section>
+
+  <section class="box chart">
+    <div class="chart-head">
+      <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-phase"/></svg><span id="chartTitle">Speed and latency</span></h2>
+      <div class="tools">
+        <div class="seg" role="group" aria-label="Graph type" id="types">
+          <button type="button" data-type="line">Line</button><button type="button" data-type="area">Area</button><button type="button" data-type="columns">Columns</button><button type="button" data-type="pie">Pie</button>
+        </div>
+        <select id="style" aria-label="Graph style">
+          <option value="classic">Classic</option>
+          <option value="smooth">Smooth</option>
+          <option value="minimal">Minimal</option>
+          <option value="liquid">Liquid</option>
+        </select>
+        <label><input type="checkbox" id="showLat" checked> Latency</label>
+        <label><input type="checkbox" id="showLoss" checked> Lost pings</label>
+      </div>
+    </div>
+    <div class="plot"><canvas id="canvas" tabindex="0" role="img" aria-label="Graph of the test: speed over time, with latency and lost pings below. Arrow keys move a readout along it."></canvas></div>
+    <div class="chart-foot"><div class="legend" id="legend"></div><div id="readout"></div></div>
+  </section>
+
+  <div class="console" id="console" aria-hidden="true">
+    <span class="tube l"><i></i></span><span class="tube r"><i></i></span>
+    <span class="grille"></span>
+    <span class="knob"></span><span class="knob b"></span>
+    <span class="vu" id="meterDown"><svg viewBox="0 0 106 70" aria-hidden="true"><path d="M14 52 A42 42 0 0 1 92 52" fill="none" stroke="#4A4234" stroke-width="1.2"/><path d="M74 22 A42 42 0 0 1 92 52" fill="none" stroke="#B4453A" stroke-width="3"/><line x1="19.5" y1="34.7" x2="24.2" y2="38.3" stroke="#4A4234" stroke-width="1"/><line x1="24.7" y1="29.0" x2="26.7" y2="31.2" stroke="#4A4234" stroke-width="1"/><line x1="30.9" y1="24.3" x2="34.0" y2="29.4" stroke="#4A4234" stroke-width="1"/><line x1="37.8" y1="20.8" x2="38.9" y2="23.6" stroke="#4A4234" stroke-width="1"/><line x1="45.3" y1="18.7" x2="46.4" y2="24.6" stroke="#4A4234" stroke-width="1"/><line x1="53.0" y1="18.0" x2="53.0" y2="21.0" stroke="#4A4234" stroke-width="1"/><line x1="60.7" y1="18.7" x2="59.6" y2="24.6" stroke="#4A4234" stroke-width="1"/><line x1="68.2" y1="20.8" x2="67.1" y2="23.6" stroke="#4A4234" stroke-width="1"/><line x1="75.1" y1="24.3" x2="72.0" y2="29.4" stroke="#4A4234" stroke-width="1"/><line x1="81.3" y1="29.0" x2="79.3" y2="31.2" stroke="#4A4234" stroke-width="1"/><line x1="86.5" y1="34.7" x2="81.8" y2="38.3" stroke="#4A4234" stroke-width="1"/></svg><span class="mlabel">DOWN</span><span class="mval">--</span><i class="needle"></i></span>
+    <span class="vu" id="meterUp"><svg viewBox="0 0 106 70" aria-hidden="true"><path d="M14 52 A42 42 0 0 1 92 52" fill="none" stroke="#4A4234" stroke-width="1.2"/><path d="M74 22 A42 42 0 0 1 92 52" fill="none" stroke="#B4453A" stroke-width="3"/><line x1="19.5" y1="34.7" x2="24.2" y2="38.3" stroke="#4A4234" stroke-width="1"/><line x1="24.7" y1="29.0" x2="26.7" y2="31.2" stroke="#4A4234" stroke-width="1"/><line x1="30.9" y1="24.3" x2="34.0" y2="29.4" stroke="#4A4234" stroke-width="1"/><line x1="37.8" y1="20.8" x2="38.9" y2="23.6" stroke="#4A4234" stroke-width="1"/><line x1="45.3" y1="18.7" x2="46.4" y2="24.6" stroke="#4A4234" stroke-width="1"/><line x1="53.0" y1="18.0" x2="53.0" y2="21.0" stroke="#4A4234" stroke-width="1"/><line x1="60.7" y1="18.7" x2="59.6" y2="24.6" stroke="#4A4234" stroke-width="1"/><line x1="68.2" y1="20.8" x2="67.1" y2="23.6" stroke="#4A4234" stroke-width="1"/><line x1="75.1" y1="24.3" x2="72.0" y2="29.4" stroke="#4A4234" stroke-width="1"/><line x1="81.3" y1="29.0" x2="79.3" y2="31.2" stroke="#4A4234" stroke-width="1"/><line x1="86.5" y1="34.7" x2="81.8" y2="38.3" stroke="#4A4234" stroke-width="1"/></svg><span class="mlabel">UP</span><span class="mval">--</span><i class="needle"></i></span>
+    <span class="knob c"></span><span class="knob d"></span>
+    <span class="grille"></span>
+  </div>
+
+  <div class="progress" role="progressbar" aria-label="Test progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress">
+    <div class="track"><i id="pIdle"></i><i id="pDown"></i><i id="pUp"></i></div><span id="pct">0%</span>
+  </div>
+
+  <section class="box" id="cmpBox">
+    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-rank"/></svg>How you compare<a class="info" href="#g-ratings" aria-label="What the comparison means" title="What this means">?</a></h2>
+    <div id="cmp"><p class="muted" style="margin-top:0.6rem">After a test, your results are set against other people's Cloudflare speed tests on your ISP and in your country.</p></div>
+  </section>
+
+  <section class="results">
+    <div class="results-head"><h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-history"/></svg>Recent results</h2><div class="head-actions"><button class="linkish" id="exportCsv" type="button" hidden>Export CSV</button><button class="linkish" id="exportJson" type="button" hidden>Export JSON</button><button class="linkish" id="clearHist" type="button" hidden>Clear history</button></div></div>
+    <table>
+      <thead><tr><th scope="col">When</th><th scope="col" class="hide-sm">Server</th><th scope="col" class="n">Ping</th><th scope="col" class="n">Jitter</th><th scope="col" class="n">Loss</th><th scope="col" class="n">Download</th><th scope="col" class="n">Upload</th></tr></thead>
+      <tbody id="history"></tbody>
+    </table>
+  </section>
+  <section class="box guide" id="guideBox">
+    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-delta"/></svg>What the numbers mean</h2>
+    <p class="guide-intro">Short explanations built on CCNA&reg; networking concepts, with sources from Cloudflare, Cisco and Microsoft.</p>
+
+    <details id="g-primer" open>
+      <summary><span class="g-name">Start here: two ideas</span><span class="g-why">Layers and delay explain almost every result.</span></summary>
+      <div class="g-body">
+        <div class="g-grid">
+          <section class="g-card">
+            <h4>Layers</h4>
+            <ol class="layers">
+              <li><span class="lay">L4 Transport</span><span class="lay-what">TCP delivers data and resends losses.</span><span class="lay-here">Speed, resends</span></li>
+              <li><span class="lay">L3 Network</span><span class="lay-what">IP routes; ICMP reports.</span><span class="lay-here">Ping, route</span></li>
+              <li><span class="lay">L1–2 Link</span><span class="lay-what">Wi-Fi, cable, modem line.</span><span class="lay-here">Most loss and jitter</span></li>
+            </ol>
+          </section>
+          <section class="g-card">
+            <h4>Four delays in every ping</h4>
+            <ul class="delays">
+              <li><b>Propagation</b> Distance. Fixed by physics.</li>
+              <li><b>Serialization</b> Putting bits on the wire. Tiny.</li>
+              <li><b>Processing</b> Routers handling packets. Small.</li>
+              <li><b>Queuing</b> Waiting in line. <i>Grows when busy.</i></li>
+            </ul>
+          </section>
+        </div>
+        <div class="g-links">
+          <a class="g-link" href="https://www.cloudflare.com/learning/ddos/glossary/open-systems-interconnection-model-osi/" target="_blank" rel="noopener">Cloudflare · OSI model</a>
+          <a class="g-link" href="https://www.cisco.com/c/en/us/support/docs/voice/voice-quality/5125-delay-details.html" target="_blank" rel="noopener">Cisco · Sources of delay</a>
+        </div>
+      </div>
+    </details>
+
+    <details id="g-speed">
+      <summary><span class="g-name">Download and upload</span><span class="g-why">Data moved per second, each way.</span></summary>
+      <div class="g-body">
+        <div class="g-idea"><span class="chip">L4 · TCP</span><p>Your plan is bandwidth; this is throughput, what actually arrives. Loss and long round trips make TCP slow down.</p></div>
+                <ul class="g-fix">
+          <li>Retest on a cable. Fine wired? The limit is Wi-Fi.</li>
+          <li>Fix loss or bufferbloat first; speed often follows.</li>
+        </ul>
+        <div class="g-links">
+          <a class="g-link" href="https://blog.cloudflare.com/making-home-internet-faster/" target="_blank" rel="noopener">Cloudflare · Bandwidth vs latency</a>
+        </div>
+      </div>
+    </details>
+
+    <details id="g-ping">
+      <summary><span class="g-name">Ping</span><span class="g-why">Round trip to the server on a quiet line.</span></summary>
+      <div class="g-body">
+        <div class="g-idea"><span class="chip">L3 · ICMP</span><p>An ICMP echo request and reply (a TCP handshake if ICMP is blocked). With nothing queued, it's your baseline delay.</p></div>
+        <div class="g-scale"><span class="lvl good">Under 20 ms</span><span class="lvl ok">20–50 ms</span><span class="lvl bad">Over 50 ms</span></div>
+        <ul class="g-fix">
+          <li>Far above the physics floor? Check the route.</li>
+          <li>Hop 1 slow? The problem is inside your home.</li>
+        </ul>
+        <div class="g-links">
+          <a class="g-link" href="https://www.cloudflare.com/learning/performance/glossary/what-is-latency/" target="_blank" rel="noopener">Cloudflare · Latency</a>
+          <a class="g-link" href="https://www.cloudflare.com/learning/ddos/glossary/internet-control-message-protocol-icmp/" target="_blank" rel="noopener">Cloudflare · ICMP</a>
+        </div>
+      </div>
+    </details>
+
+    <details id="g-bloat">
+      <summary><span class="g-name">Bufferbloat</span><span class="g-why">How much ping rises when the line is busy.</span></summary>
+      <div class="g-body">
+        <div class="g-idea"><span class="chip">Queuing · QoS</span><p>Oversized queues make calls and games wait behind downloads. QoS queuing keeps urgent packets moving.</p></div>
+        <div class="g-scale"><span class="lvl good">A · under 10 ms</span><span class="lvl ok">B · 10–20 · C · 20–50</span><span class="lvl bad">D · over 50 ms</span></div>
+        <ul class="g-fix">
+          <li>Turn on QoS or SQM in your router.</li>
+          <li>Retest. The grade should rise.</li>
+        </ul>
+        <div class="g-links">
+          <a class="g-link" href="https://blog.cloudflare.com/how-does-cloudflares-speed-test-really-work/" target="_blank" rel="noopener">Cloudflare · Idle vs loaded latency</a>
+          <a class="g-link" href="https://www.cisco.com/c/en/us/tech/quality-of-service-qos/qos-congestion-management-queueing/index.html" target="_blank" rel="noopener">Cisco · QoS queuing</a>
+        </div>
+      </div>
+    </details>
+
+    <details id="g-jitter">
+      <summary><span class="g-name">Jitter</span><span class="g-why">How much ping varies from packet to packet.</span></summary>
+      <div class="g-body">
+        <div class="g-idea"><span class="chip">Delay variation</span><p>The changing part of delay, usually queuing or Wi-Fi retries. Too much and calls break up.</p></div>
+        <div class="g-scale"><span class="lvl good">Under 10 ms</span><span class="lvl ok">10–20 ms</span><span class="lvl bad">Over 20 ms</span></div>
+        <ul class="g-fix">
+          <li>Wi-Fi only? Use 5 GHz or move closer.</li>
+          <li>Only under load? Fix bufferbloat.</li>
+        </ul>
+        <div class="g-links">
+          <a class="g-link" href="https://blog.cloudflare.com/aim-database-for-internet-quality/" target="_blank" rel="noopener">Cloudflare · Jitter and loss</a>
+        </div>
+      </div>
+    </details>
+
+    <details id="g-loss">
+      <summary><span class="g-name">Packet loss</span><span class="g-why">Packets that never arrive.</span></summary>
+      <div class="g-body">
+        <div class="g-idea"><span class="chip">L1–2 · L3 · L4</span><p>Caused by link errors (bad signal or cable) or full router queues. TCP resends what's lost, which costs speed.</p></div>
+        <div class="g-scale"><span class="lvl good">Under 1%</span><span class="lvl ok">1–5%</span><span class="lvl bad">Over 5%</span></div>
+        <ul class="g-fix">
+          <li>Loss when idle: check Wi-Fi, cables, modem.</li>
+          <li>Loss only under load: full queues, so fix bufferbloat.</li>
+          <li>Find the hop: <code>pathping speed.cloudflare.com</code></li>
+        </ul>
+        <div class="g-links">
+          <a class="g-link" href="https://blog.cloudflare.com/aim-database-for-internet-quality/" target="_blank" rel="noopener">Cloudflare · Packet loss</a>
+          <a class="g-link" href="https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/pathping" target="_blank" rel="noopener">Microsoft · pathping</a>
+        </div>
+      </div>
+    </details>
+
+    <details id="g-route">
+      <summary><span class="g-name">Route</span><span class="g-why">Each router on the way, and where delay is added.</span></summary>
+      <div class="g-body">
+        <div class="g-idea"><span class="chip">L3 · TTL</span><p>Each router lowers a packet's TTL by one. At zero it replies "time exceeded", revealing itself. That's traceroute.</p></div>
+        <ul class="g-fix">
+          <li>Hop 1 is your router. It should be a few ms.</li>
+          <li>"No answer" is a router rate-limiting replies, not a fault.</li>
+        </ul>
+        <div class="g-links">
+          <a class="g-link" href="https://www.cloudflare.com/learning/ddos/glossary/internet-control-message-protocol-icmp/" target="_blank" rel="noopener">Cloudflare · ICMP and traceroute</a>
+          <a class="g-link" href="https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/tracert" target="_blank" rel="noopener">Microsoft · tracert</a>
+        </div>
+      </div>
+    </details>
+
+    <details id="g-distance">
+      <summary><span class="g-name">Physics floor</span><span class="g-why">The fastest a ping could ever be.</span></summary>
+      <div class="g-body">
+        <div class="g-idea"><span class="chip">Propagation delay</span><p>Light in fibre covers about 100 km per 1 ms of round trip. The gap above the floor is what you can improve.</p></div>
+        <ul class="g-fix">
+          <li>Near the floor: nothing to gain.</li>
+          <li>Below it: your IP location is approximate.</li>
+        </ul>
+        <div class="g-links">
+          <a class="g-link" href="https://www.cloudflare.com/learning/performance/glossary/what-is-latency/" target="_blank" rel="noopener">Cloudflare · Distance and latency</a>
+          <a class="g-link" href="https://www.cisco.com/c/en/us/support/docs/voice/voice-quality/5125-delay-details.html" target="_blank" rel="noopener">Cisco · Propagation delay</a>
+        </div>
+      </div>
+    </details>
+
+    <details id="g-ratings">
+      <summary><span class="g-name">Where the ratings come from</span><span class="g-why">Every threshold is published by the source named.</span></summary>
+      <div class="g-body">
+        <ul class="g-fix">
+          <li><b>Ping, jitter, loss, bufferbloat, gaming:</b> Cloudflare's AIM bands. Gaming takes the weakest of loss, ping and bufferbloat. AIM leaves ping between 50 and 100 ms unscored, so it counts as poor here.</li>
+          <li><b>Video calls:</b> Microsoft's Teams targets. Under 100 ms round trip, 30 ms jitter, 1% loss.</li>
+          <li><b>Streaming:</b> Netflix. 15 Mbps for 4K, 5 for 1080p, 3 for 720p.</li>
+        </ul>
+        <div class="g-links">
+          <a class="g-link" href="https://blog.cloudflare.com/aim-database-for-internet-quality/" target="_blank" rel="noopener">Cloudflare · AIM scores</a>
+          <a class="g-link" href="https://learn.microsoft.com/en-us/SkypeForBusiness/optimizing-your-network/media-quality-and-network-connectivity-performance" target="_blank" rel="noopener">Microsoft · Teams network targets</a>
+          <a class="g-link" href="https://help.netflix.com/en/node/306" target="_blank" rel="noopener">Netflix · Recommended speeds</a>
+        </div>
+      </div>
+    </details>
+
+    <details id="g-tips">
+      <summary><span class="g-name">Fair testing</span><span class="g-why">Make results comparable.</span></summary>
+      <div class="g-body">
+        <ul class="g-fix">
+          <li>Test wired and on Wi-Fi; the difference is your home network.</li>
+          <li>Pause other downloads and streams.</li>
+          <li>Test at different times; evening dips mean ISP congestion.</li>
+        </ul>
+      </div>
+    </details>
+  </section>
+</main>
+
+<footer class="bar keys">
+  <span><kbd>Enter</kbd>Start test</span>
+  <span><kbd>Esc</kbd>Stop</span>
+  <span>Click a result for details</span>
+</footer>
+<footer class="legal">
+  <p>Speed Test measures against the public Cloudflare&reg; speed test service at speed.cloudflare.com and, if you add an API token, compares results using the Cloudflare Radar&trade; API.
+  Speed Test is an independent project. It is not affiliated with, endorsed by or sponsored by Cloudflare, Inc.</p>
+  <p>Cloudflare and Cloudflare Radar are trademarks and/or registered trademarks of Cloudflare, Inc. Cisco and CCNA are trademarks or registered trademarks of Cisco Systems, Inc. and/or its affiliates. Speed Test is not affiliated with or endorsed by Cisco.</p>
+</footer>
+
+<dialog id="settings">
+  <form method="dialog" id="sForm">
+    <h2>Settings</h2>
+    <div class="field">
+      <label for="sDir">Test length, each direction</label><output id="sDirOut"></output>
+      <input type="range" id="sDir" min="5" max="30" step="1">
+      <p class="help">Longer gives TCP time to reach full speed and smooths out bursts. Past about 20 seconds it rarely changes the result.</p>
+    </div>
+    <div class="field">
+      <label for="sIdle">Idle latency phase (seconds)</label><input type="number" id="sIdle" min="2" max="15" step="1">
+      <p class="help">Pings on a quiet line before any data moves: your baseline ping, jitter and loss.</p>
+    </div>
+    <div class="field">
+      <label for="sWarm">Warm-up left out (seconds)</label><input type="number" id="sWarm" min="0.5" max="6" step="0.5">
+      <p class="help">The start of each phase, while connections ramp up, is not counted in the speed.</p>
+    </div>
+    <div class="field">
+      <label for="sStreams">Connections per direction</label><input type="number" id="sStreams" min="1" max="16" step="1">
+      <p class="help">Each is its own TCP connection. More helps on fast or long-distance lines.</p>
+    </div>
+    <div class="field">
+      <label for="sRate">Pings per second</label><input type="number" id="sRate" min="2" max="50" step="1">
+      <p class="help">Sent for the whole test, to measure latency under load and packet loss.</p>
+    </div>
+    <div class="field wide">
+      <label for="sToken">Cloudflare API token, for comparing with other users</label>
+      <div style="display:flex;gap:0.6rem"><input type="password" id="sToken" autocomplete="off" spellcheck="false" style="flex:1"><button class="btn" type="button" id="sCheck" style="padding:0.35rem 0.9rem">Check token</button></div>
+      <p class="help" id="sCheckOut" hidden></p>
+      <p class="help" id="sTokenHelp">Free. In Cloudflare: Manage account &rarr; Account API tokens &rarr; Create token, with one permission, Radar &rarr; Read. Paste only the token, which the Cloudflare dashboard shows once. It is kept in settings.json on this computer and only ever sent to the Cloudflare API.</p>
+    </div>
+    <p class="est" id="sEst"></p>
+    <p id="sErr" hidden></p>
+    <div class="dlg-actions">
+      <button class="linkish" type="button" id="sDefaults">Reset to defaults</button>
+      <div><button class="btn" type="button" id="sCancel">Cancel</button><button class="btn" type="submit" id="sSave" style="background:var(--accent);color:var(--on-accent);border-color:var(--accent)">Save</button></div>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var C = {}, FONT = '';
+  function readColors() {
+    var css = getComputedStyle(document.documentElement);
+    ['screen', 'sunk', 'ink', 'bright', 'dim', 'line', 'grid', 'edge', 'down', 'up', 'lat', 'loss', 'b1', 'b2', 'b3', 'b4', 'b5',
+     'band-idle', 'band-down', 'band-up', 'glass', 'glass-rim', 'glass-edge', 'sheen', 'glint', 'grain-shade']
+      .forEach(function (k) { C[k.replace(/-(\w)/g, function (m, c) { return c.toUpperCase(); })] = css.getPropertyValue('--' + k).trim(); });
+    C.download = C.down; C.upload = C.up;
+    FONT = css.getPropertyValue('--font').trim();
+  }
+  readColors();
+  var g = $('canvas').getContext('2d');
+
+  // ------------------------------------------------------------------ Formatting
+  function fmtMbps(v) { return v == null || isNaN(v) ? '--' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2); }
+  function fmtMs(v) { return v == null || isNaN(v) ? '--' : v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : v.toFixed(0); }
+  function fmtPct(v) { return v == null || isNaN(v) ? '--' : v === 0 ? '0' : v < 0.1 ? v.toFixed(2) : v < 10 ? v.toFixed(1) : v.toFixed(0); }
+  function fmtBytes(b) { return b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : Math.round(b / 1e6) + ' MB'; }
+  function fmtKm(km) { return Math.round(km).toLocaleString() + ' km (' + Math.round(km * 0.621371).toLocaleString() + ' mi)'; }
+  function when(ms) {
+    var d = new Date(ms);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+  function median(a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }); var m = (s.length - 1) / 2; return (s[Math.floor(m)] + s[Math.ceil(m)]) / 2; }
+  function pctl(a, p) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }); var i = p / 100 * (s.length - 1), lo = Math.floor(i), hi = Math.ceil(i); return s[lo] + (s[hi] - s[lo]) * (i - lo); }
+  function meanStep(a) { if (a.length < 2) return null; var s = 0; for (var i = 1; i < a.length; i++) s += Math.abs(a[i] - a[i - 1]); return s / (a.length - 1); }
+  function h(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function place(c) { return [c.city, c.region, c.country].filter(Boolean).join(', '); }
+  function facts(rows) {
+    var dl = h('dl', 'facts');
+    rows.forEach(function (r) { if (r[1] == null || r[1] === '') return; dl.appendChild(h('dt', null, r[0])); dl.appendChild(h('dd', null, r[1])); });
+    return dl;
+  }
+  var GEARS = '<svg viewBox="0 0 36 24"><defs><linearGradient id="brassG" x1="0" y1="0" x2="1" y2="1">' +
+    '<stop offset="0" stop-color="#EDE2C6"/><stop offset=".55" stop-color="#C2AE86"/><stop offset="1" stop-color="#8C7A58"/></linearGradient>' +
+    '<linearGradient id="creamG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#C8D4E2"/><stop offset="1" stop-color="#7C8DA4"/></linearGradient></defs>' +
+    '<g class="g1"><path fill="url(#brassG)" fill-rule="evenodd" d="M18.91 10.85 L21.41 11.61 L21.41 14.39 L18.91 15.15 L18.44 16.44 L19.87 18.63 L18.08 20.75 L15.68 19.73 L14.49 20.42 L14.17 23.01 L11.44 23.49 L10.26 21.17 L8.91 20.93 L7.00 22.71 L4.59 21.32 L5.18 18.78 L4.30 17.73 L1.69 17.86 L0.74 15.25 L2.83 13.69 L2.83 12.31 L0.74 10.75 L1.69 8.14 L4.30 8.27 L5.18 7.22 L4.59 4.68 L7.00 3.29 L8.91 5.07 L10.26 4.83 L11.44 2.51 L14.17 2.99 L14.49 5.58 L15.68 6.27 L18.08 5.25 L19.87 7.37 L18.44 9.56 Z M14.20 13.00 A3.2 3.2 0 1 0 7.80 13.00 A3.2 3.2 0 1 0 14.20 13.00 Z"/></g>' +
+    '<g class="g2"><path fill="url(#creamG)" fill-rule="evenodd" d="M31.22 5.76 L33.10 6.28 L33.10 8.52 L31.22 9.04 L30.76 9.99 L31.53 11.79 L29.78 13.18 L28.20 12.03 L27.17 12.27 L26.24 13.99 L24.06 13.49 L23.97 11.54 L23.15 10.88 L21.23 11.23 L20.25 9.21 L21.73 7.93 L21.73 6.87 L20.25 5.59 L21.23 3.57 L23.15 3.92 L23.97 3.26 L24.06 1.31 L26.24 0.81 L27.17 2.53 L28.20 2.77 L29.78 1.62 L31.53 3.01 L30.76 4.81 Z M28.60 7.40 A2.0 2.0 0 1 0 24.60 7.40 A2.0 2.0 0 1 0 28.60 7.40 Z"/></g></svg>';
+  function spinner(kind) {
+    var sp = h('span', 'spin' + (kind ? ' ' + kind : ''));
+    sp.setAttribute('aria-hidden', 'true');
+    sp.innerHTML = GEARS;
+    return sp;
+  }
+  // A line that says what is being waited for, with the spinner in front.
+  function waiting(text, kind) {
+    var w = h('span', 'waiting'); w.appendChild(spinner(kind)); w.appendChild(document.createTextNode(text)); return w;
+  }
+  function setWaiting(id, text, kind) { var e = $(id); e.textContent = ''; e.appendChild(waiting(text, kind)); }
+
+  function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
+
+  // ------------------------------------------------------------------ State
+  var settings = null, history = [];
+  var live = null;          // the test in progress or last finished, as it streamed in
+  var viewing = null;       // a test from history shown instead, or null for live
+  var running = false;
+  var view = Object.assign({ type: 'line', style: 'classic', lat: true, loss: true }, store('speedtest.view') || {});
+  if (view.style === 'sand') view.style = 'liquid';
+  var ui = { dirty: true, hoverT: null, focusT: null, openId: null };
+
+  function shown() { return viewing || live; }
+
+  function newLive(ev) {
+    return { id: 'live-' + Date.now(), plan: ev.plan, config: ev.config, phases: {}, samples: [], probes: [], meta: null, stats: {}, result: null, lastT: 0 };
+  }
+  function fromResult(r) {
+    var phases = {}, end = 0;
+    (r.phases || []).forEach(function (p) { phases[p.name] = { start: p.start, end: p.end }; end = Math.max(end, p.end); });
+    return {
+      id: r.id,
+      plan: { idle: r.config.idleSeconds, dir: r.config.directionSeconds, total: end || (r.config.idleSeconds + 2 * r.config.directionSeconds), warmup: r.config.warmupSeconds },
+      config: r.config, phases: phases, samples: r.samples || [], probes: r.probes || [], result: r, lastT: end,
+      meta: { server: r.server, client: r.client, distanceKm: r.distanceKm, fiberFloorMs: r.fiberFloorMs, probeMethod: r.probeMethod }
+    };
+  }
+
+  // ------------------------------------------------------------------ Server connection
+  function post(path, body) {
+    return fetch(path, { method: 'POST', headers: { 'X-Speedtest': '1', 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : '{}' })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; }); });
+  }
+
+  function connect() {
+    var es = new EventSource('/api/events');
+    es.onmessage = function (e) { try { onEvent(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+    es.onerror = function () { if (running) setStatus('Lost contact with the speed test program. Is its window still open?', true); };
+  }
+
+  function onEvent(ev) {
+    switch (ev.type) {
+      case 'reset':
+        live = newLive(ev); viewing = null; setRunning(true); clearReadouts(); renderConnection(null); renderCompare(null); resetMeters();
+        renderQuality(null); renderRoute(null);
+        break;
+      case 'status':
+        setStatus(ev.text, false, true);
+        if (/tracing/i.test(ev.text) && !viewing) { var rb = $('route'); rb.textContent = ''; var rw = waiting('Sending pings with a growing time-to-live to map each hop\u2026'); rw.style.marginTop = '0.7rem'; rb.appendChild(rw); }
+        if (/compar/i.test(ev.text) && !viewing) { var cb = $('cmp'); cb.textContent = ''; var wv = waiting('Asking the Cloudflare Radar\u2122 API how others on your ISP and in your country do\u2026'); wv.style.marginTop = '0.8rem'; cb.appendChild(wv); }
+        break;
+      case 'meta': live.meta = ev; renderConnection(ev); setChip(ev.server); break;
+      case 'phase':
+        live.phases[ev.name] = { start: ev.t, end: null }; live.lastT = Math.max(live.lastT, ev.t);
+        if (!viewing && ev.name === 'download') setWaiting('downSub', 'connecting', 'down');
+        if (!viewing && ev.name === 'upload') setWaiting('upSub', 'connecting', 'up');
+        break;
+      case 'phaseEnd':
+        live.phases[ev.name] = { start: ev.start, end: ev.end };
+        if (ev.name === 'idle' && !viewing && live.meta) renderConnection(live.meta);
+        if (ev.name === 'idle' && !viewing) { $('pingSub').textContent = 'idle median'; $('jitterSub').textContent = 'idle'; lastLatText = 0; liveLatency(); }
+        break;
+      case 'sample': live.samples.push(ev.s); live.lastT = Math.max(live.lastT, ev.s.t); liveSpeed(ev.s, ev.bytes); if (!viewing) setMeter(ev.s.phase, ev.s.avg); break;
+      case 'probe': live.probes.push(ev.p); live.lastT = Math.max(live.lastT, ev.p.t); liveLatency(); break;
+      case 'route': live.route = ev.hops; if (!viewing) renderRoute(ev.hops || [], {}); break;
+      case 'phaseResult': live.stats[ev.name] = ev.stats; if (!viewing) { showPhase(ev.name, ev.stats); setMeter(ev.name, ev.stats.mbps, true); } break;
+      case 'result':
+        live.result = ev.result; live.probes = ev.result.probes || live.probes; live.samples = ev.result.samples || live.samples;
+        if (!viewing) showResult(ev.result);
+        loadHistory();
+        setStatus('Finished at ' + new Date(ev.result.when).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + '.' + (ev.result.warnings && ev.result.warnings.length ? ' ' + ev.result.warnings.join(' ') : ''));
+        break;
+      case 'error': setStatus(ev.message, ev.kind !== 'stopped'); break;
+      case 'end': setRunning(false); break;
+    }
+    if (live && !viewing) setProgress(live);
+    ui.dirty = true;
+  }
+
+  function setRunning(on) {
+    running = on;
+    consoleOn(on);
+    $('start').textContent = on ? 'Stop' : (live ? 'Run again' : 'Start test');
+    $('start').classList.toggle('running', on);
+  }
+
+  function setStatus(text, isError, busy) {
+    var s = $('status'); s.textContent = '';
+    if (isError) s.appendChild(h('span', 'badge', 'Error'));
+    if (busy) { var sp = spinner(); sp.style.marginRight = '0.65rem'; s.appendChild(sp); }
+    s.appendChild(document.createTextNode(text));
+  }
+
+  // ------------------------------------------------------------------ Console (Robot): meters and valves
+  var meters = { download: { el: 'meterDown', max: 100, v: 0 }, upload: { el: 'meterUp', max: 50, v: 0 } };
+  function setMeter(kind, v, settle) {
+    var m = meters[kind]; if (!m) return;
+    m.v = v || 0;
+    if (settle || m.v > m.max * 0.92) m.max = niceAxis(Math.max(10, m.v * 1.25)).max;   // rescale, like turning the range knob
+    var el = $(m.el), frac = Math.max(0, Math.min(1, m.v / m.max));
+    el.querySelector('.needle').style.setProperty('--deg', (-52 + 104 * frac) + 'deg');
+    el.querySelector('.mval').textContent = v ? fmtMbps(v) : '--';
+    el.title = (v ? fmtMbps(v) + ' Mbps' : '') + ' (scale 0\u2013' + m.max + ')';
+  }
+  function resetMeters() { setMeter('download', 0); setMeter('upload', 0); meters.download.max = 100; meters.upload.max = 50; }
+  function consoleOn(on) { $('console').classList.toggle('on', !!on); }
+
+  function setChip(server) {
+    if (!server) return;
+    var bits = [server.host, server.colo ? server.colo + (server.city ? ' · ' + server.city : '') : '', server.ip].filter(Boolean);
+    $('chip').textContent = bits.join('  ·  ');
+  }
+
+  // ------------------------------------------------------------------ Readouts
+  function clearReadouts() {
+    ['ping', 'jitter', 'loss', 'down', 'up'].forEach(function (k) { $(k).textContent = '--'; });
+    if (running) {
+      setWaiting('pingSub', 'measuring idle', 'lat'); setWaiting('jitterSub', 'measuring idle', 'lat');
+      setWaiting('lossSub', 'counting pings', 'lat');
+      setWaiting('downSub', 'up next', 'down'); setWaiting('upSub', 'after download', 'up');
+      return;
+    }
+    $('pingSub').textContent = 'idle median'; $('jitterSub').textContent = 'idle';
+    $('lossSub').textContent = ''; $('downSub').textContent = ''; $('upSub').textContent = '';
+  }
+
+  var lastSpeedText = 0;
+  function liveSpeed(s, bytes) {
+    if (viewing) return;
+    var now = performance.now();
+    if (now - lastSpeedText < 150) return;
+    lastSpeedText = now;
+    var k = s.phase === 'download' ? 'down' : 'up';
+    $(k).textContent = fmtMbps(s.avg);
+    $(k + 'Sub').textContent = fmtBytes(bytes) + ' so far';
+  }
+
+  function probeStats(probes, phase, from) {
+    var r = [], sent = 0, lost = 0;
+    probes.forEach(function (p) {
+      if (phase && p.phase !== phase) return;
+      sent++;
+      if (p.rtt < 0) { lost++; return; }
+      if (from == null || p.t >= from) r.push(p.rtt);
+    });
+    var sorted = probes.filter(function (p) { return (!phase || p.phase === phase) && p.rtt >= 0 && (from == null || p.t >= from); })
+      .sort(function (a, b) { return a.t - b.t; }).map(function (p) { return p.rtt; });
+    return { median: median(r), jitter: meanStep(sorted), sent: sent, lost: lost, loss: sent ? lost / sent * 100 : null };
+  }
+
+  var lastLatText = 0;
+  function liveLatency() {
+    if (viewing || !live) return;
+    var now = performance.now();
+    if (now - lastLatText < 200) return;
+    lastLatText = now;
+    var idle = probeStats(live.probes, 'idle');
+    if (idle.median != null) { $('ping').textContent = fmtMs(idle.median); }
+    if (idle.jitter != null) { $('jitter').textContent = fmtMs(idle.jitter); }
+    var warm = live.plan.warmup || 0;
+    var loaded = [];
+    ['download', 'upload'].forEach(function (k) {
+      var ph = live.phases[k]; if (!ph) return;
+      var st = probeStats(live.probes, k, ph.start + warm);
+      if (st.median != null) loaded.push((k === 'download' ? '↓ ' : '↑ ') + fmtMs(st.median));
+    });
+    if (loaded.length) $('pingSub').textContent = 'idle · loaded ' + loaded.join('  ');
+    var all = probeStats(live.probes);
+    if (all.sent) { $('loss').textContent = fmtPct(all.loss); $('lossSub').textContent = all.lost + ' of ' + all.sent + ' pings lost'; }
+  }
+
+  function showPhase(kind, st) {
+    var k = kind === 'download' ? 'down' : 'up';
+    $(k).textContent = fmtMbps(st.mbps);
+    $(k + 'Sub').textContent = 'median ' + fmtMbps(st.median) + ' · 90th ' + fmtMbps(st.p90);
+  }
+
+  function showResult(r) {
+    $('ping').textContent = fmtMs(r.idle.median);
+    $('pingSub').textContent = 'idle · loaded ↓ ' + fmtMs(r.download.latency.median) + '  ↑ ' + fmtMs(r.upload.latency.median);
+    $('jitter').textContent = fmtMs(r.idle.jitter);
+    $('jitterSub').textContent = 'idle · loaded ↓ ' + fmtMs(r.download.latency.jitter) + '  ↑ ' + fmtMs(r.upload.latency.jitter);
+    $('loss').textContent = fmtPct(r.lossPct);
+    $('lossSub').textContent = 'idle ' + fmtPct(r.idle.lossPct) + '  ↓ ' + fmtPct(r.download.latency.lossPct) + '  ↑ ' + fmtPct(r.upload.latency.lossPct) + ' %';
+    showPhase('download', r.download);
+    showPhase('upload', r.upload);
+    setMeter('download', r.download.mbps, true); setMeter('upload', r.upload.mbps, true);
+    renderConnection({ server: r.server, client: r.client, distanceKm: r.distanceKm, fiberFloorMs: r.fiberFloorMs, probeMethod: r.probeMethod }, r);
+    setChip(r.server);
+    renderCompare(r);
+    renderQuality(r);
+    renderRoute(r.route || null, r);
+  }
+
+  // ------------------------------------------------------------------ Connection card
+  function renderConnection(m, r) {
+    var box = $('conn'); box.textContent = '';
+    var you = h('div'), srv = h('div'), dist = h('div');
+    you.appendChild(h('h3', null, 'You')); srv.appendChild(h('h3', null, 'Server')); dist.appendChild(h('h3', null, 'Distance'));
+    box.appendChild(you); box.appendChild(srv); box.appendChild(dist);
+    if (!m) {
+      if (running) {
+        you.appendChild(waiting('Looking up your IP and ISP\u2026'));
+        srv.appendChild(waiting('Finding the data centre\u2026'));
+        dist.appendChild(waiting('Measuring the distance\u2026'));
+        return;
+      }
+      you.appendChild(h('p', 'muted', 'Shown when a test starts.'));
+      srv.appendChild(h('p', 'muted', 'The data centre that answers you.'));
+      dist.appendChild(h('p', 'muted', 'How far apart you are, and the fastest ping physics allows.'));
+      return;
+    }
+    var c = m.client || {}, s = m.server || {};
+    you.appendChild(facts([
+      ['IP', c.ip],
+      ['ISP', c.isp ? c.isp + (c.asn ? ' (AS' + c.asn + ')' : '') : (c.asn ? 'AS' + c.asn : '')],
+      ['Location', place(c) ? place(c) + ' (from IP, approximate)' : 'unknown']
+    ]));
+    srv.appendChild(facts([
+      ['Data centre', s.colo ? s.colo + (s.city ? ', ' + s.city : '') : 'unknown'],
+      ['IP', s.ip],
+      ['Host', s.host],
+      ['Pings', m.probeMethod]
+    ]));
+    if (!m.distanceKm) {
+      dist.appendChild(h('p', 'muted', 'Not available: the server or your location could not be placed.'));
+      return;
+    }
+    var p = h('div', 'floor');
+    var big = h('p'); big.appendChild(h('span', 'big', fmtKm(m.distanceKm))); p.appendChild(big);
+    p.appendChild(h('p', null, 'Light in fibre needs at least ' + fmtMs(m.fiberFloorMs) + ' ms for that round trip.'));
+    var idle = r ? r.idle.median : probeStats((live && live.probes) || [], 'idle').median;
+    if (idle == null && running && !r) { var wt = waiting('Waiting for the first pings\u2026', 'lat'); wt.style.marginTop = '0.5rem'; p.appendChild(wt); }
+    if (idle != null) {
+      var over = idle - m.fiberFloorMs;
+      var meter = h('div', 'meter'), a = h('i', 'phys'), b = h('i', 'rest');
+      var phys = Math.max(0, Math.min(100, m.fiberFloorMs / Math.max(idle, m.fiberFloorMs) * 100));
+      a.style.width = phys + '%'; b.style.left = phys + '%'; b.style.width = (100 - phys) + '%';
+      meter.appendChild(a); meter.appendChild(b); p.appendChild(meter);
+      var key = h('div', 'meter-key'); key.appendChild(h('span', null, 'distance ' + fmtMs(m.fiberFloorMs) + ' ms')); key.appendChild(h('span', null, 'everything else ' + fmtMs(Math.max(0, over)) + ' ms')); p.appendChild(key);
+      p.appendChild(h('p', 'muted', over >= 0
+        ? 'Your ping is ' + (idle / Math.max(m.fiberFloorMs, 0.01)).toFixed(1) + '× the physical floor. The rest is the route not being a straight line, your Wi-Fi or modem, and routers on the way.'
+        : 'Your ping is below the floor for this distance, so your IP location is probably off; it is often your ISP’s hub rather than you.'));
+    }
+    dist.appendChild(p);
+  }
+
+  // ------------------------------------------------------------------ Comparison card
+  function renderCompare(r) {
+    var box = $('cmp'); box.textContent = '';
+    function note(el) { el.style.marginTop = '0.8rem'; box.appendChild(el); }
+    if (!r) {
+      if (running) note(waiting('Waiting for the test to finish…'));
+      else note(h('p', 'muted', 'After a test, your results are set against other people’s Cloudflare speed tests on your ISP and in your country.'));
+      return;
+    }
+    var c = r.compare;
+    if (!c) {
+      var p = h('p', 'muted');
+      p.textContent = settings && settings.radarToken ? 'No comparison for this test (the ISP or country was not known).' : 'Add a free Cloudflare API token in Settings to compare with other users on your ISP and in your country. ';
+      if (!(settings && settings.radarToken)) { var b = h('button', 'linkish', 'Open settings'); b.type = 'button'; b.onclick = openSettings; p.appendChild(b); }
+      note(p); return;
+    }
+    if (c.error) { note(h('p', 'muted', 'Could not compare: ' + c.error + '.')); return; }
+
+    var isp = shortIsp(c.isp) || ('AS' + c.asn), ctry = c.country || 'your country';
+    var I = c.ispMedian, K = c.countryMedian;
+
+    // Rank tiles: where you fall among everyone's tests
+    var ranks = h('div', 'cmp-ranks');
+    [['download', 'Download', c.downRankIsp, c.downRankCountry], ['upload', 'Upload', c.upRankIsp, c.upRankCountry]].forEach(function (x) {
+      var main = x[2] != null ? x[2] : x[3];
+      if (main == null) return;
+      main = Math.max(0, Math.min(100, main));
+      var who = x[2] != null ? isp + ' tests in ' + ctry : 'tests in ' + ctry;
+      var tile = h('div', 'rank-tile'), color = C[x[0]];
+      var lab = h('div', 'label'); lab.appendChild(h('i', 'key ' + (x[0] === 'download' ? 'down' : 'up'))); lab.appendChild(document.createTextNode(x[1]));
+      tile.appendChild(lab);
+      tile.appendChild(h('p', 'rank-big', 'Faster than ' + Math.round(main) + '%'));
+      tile.appendChild(h('p', 'rank-who', 'of ' + who));
+      var tr = h('div', 'ptrack'), fill = h('i', 'fill'), mark = h('i', 'mark');
+      fill.style.width = main + '%'; fill.style.background = color;
+      mark.style.left = main + '%'; mark.style.borderColor = color;
+      tr.appendChild(fill); tr.appendChild(h('i', 'mid')); tr.appendChild(mark);
+      [['l', 'slowest'], ['c', 'median'], ['r', 'fastest']].forEach(function (t) { tr.appendChild(h('span', 'tick ' + t[0], t[1])); });
+      tile.appendChild(tr);
+      if (x[2] != null && x[3] != null) tile.appendChild(h('p', 'rank-also', 'and ' + Math.round(x[3]) + '% of all tests in ' + ctry));
+      ranks.appendChild(tile);
+    });
+    if (ranks.children.length) box.appendChild(ranks);
+
+    // One table: each measure, you against the medians, and a verdict in words
+    var dl = r.download, ul = r.upload;
+    var rows = [
+      ['Download', null, dl.mbps, I && I.down, K && K.down, true, 'Mbps'],
+      ['Upload', null, ul.mbps, I && I.up, K && K.up, true, 'Mbps'],
+      ['Latency', 'idle', r.idle.median, I && I.latencyIdle, K && K.latencyIdle, false, 'ms'],
+      ['Latency', 'under load', Math.max(dl.latency.median, ul.latency.median), I && I.latencyLoaded, K && K.latencyLoaded, false, 'ms'],
+      ['Jitter', 'idle', r.idle.jitter, I && I.jitterIdle, K && K.jitterIdle, false, 'ms'],
+      ['Jitter', 'under load', Math.max(dl.latency.jitter, ul.latency.jitter), I && I.jitterLoaded, K && K.jitterLoaded, false, 'ms']
+    ];
+    var t = h('table', 'cmp-table'), head = t.createTHead().insertRow();
+    ['', 'You', isp + ' median', ctry + ' median', 'Verdict'].forEach(function (x, i) {
+      var th = h('th', i === 4 ? 'verdict' : null, x); th.scope = 'col'; head.appendChild(th);
+    });
+    var body = t.createTBody();
+    rows.forEach(function (row) {
+      if (!row[3] && !row[4]) return;
+      var tr = body.insertRow(), fmt = row[6] === 'Mbps' ? fmtMbps : fmtMs;
+      var name = tr.insertCell(); name.appendChild(document.createTextNode(row[0])); if (row[1]) name.appendChild(h('small', null, row[1]));
+      var you = tr.insertCell(); you.className = 'you'; you.textContent = fmt(row[2]) + ' ' + row[6];
+      tr.insertCell().textContent = row[3] ? fmt(row[3]) + ' ' + row[6] : '—';
+      tr.insertCell().textContent = row[4] ? fmt(row[4]) + ' ' + row[6] : '—';
+      var vd = tr.insertCell(); vd.className = 'verdict';
+      var v = verdict(row[2], row[3] || row[4], row[5]);
+      if (v) { var sp = h('span', v.cls); if (v.arrow) sp.appendChild(h('b', null, v.arrow)); sp.appendChild(document.createTextNode(v.text)); vd.appendChild(sp); }
+    });
+    box.appendChild(t);
+    box.appendChild(h('p', 'cmp-note', 'Medians of the last 90 days of tests on the public Cloudflare speed test service, from Cloudflare Radar\u2122. Verdicts compare you with the ' +
+      (I ? isp : ctry) + ' median. Radar groups results by ISP and country, not by city.'));
+  }
+
+  // "Comcast Cable Communications Holdings, Inc" -> "Comcast Cable"
+  function shortIsp(name) {
+    if (!name) return '';
+    var n = name.trim().replace(/,?\s*(Inc\.?|LLC|L\.L\.C\.|Ltd\.?|Corp\.?|Corporation|Co\.)$/i, '');
+    n = n.replace(/(\s+(Communications|Holdings|Holding|Networks?|Services))+$/i, '');
+    return n.length > 26 ? n.slice(0, 24) + '…' : n;
+  }
+
+  // Better or worse than the median, in words.
+  function verdict(mine, ref, higherBetter) {
+    if (mine == null || isNaN(mine) || !ref) return null;
+    var ratio = mine / ref;
+    if (ratio > 0.9 && ratio < 1.1) return { cls: 'same', text: 'about the same as the median' };
+    if (higherBetter) {
+      return ratio >= 1.1
+        ? { cls: 'good', arrow: '▲', text: (ratio >= 2 ? ratio.toFixed(1) + '×' : Math.round((ratio - 1) * 100) + '% more than') + ' the median' }
+        : { cls: 'bad', arrow: '▼', text: Math.round((1 - ratio) * 100) + '% less than the median' };
+    }
+    var diff = Math.abs(mine - ref);
+    return ratio <= 0.9
+      ? { cls: 'good', arrow: '▼', text: fmtMs(diff) + ' ms lower than the median' }
+      : { cls: 'bad', arrow: '▲', text: fmtMs(diff) + ' ms higher than the median' };
+  }
+
+  // ------------------------------------------------------------------ Quality: grade and ratings
+  // Bufferbloat grade from Cloudflare AIM's bands for loaded minus unloaded latency (10 / 20 / 50 ms).
+  function bloatGrade(ms) {
+    if (ms == null || isNaN(ms)) return null;
+    return ms < 10 ? 'A' : ms < 20 ? 'B' : ms < 50 ? 'C' : 'D';
+  }
+
+  function ratings(r) {
+    var dl = r.download, ul = r.upload;
+    var lat = Math.max(dl.latency.median || 0, ul.latency.median || 0);
+    var jit = Math.max(dl.latency.jitter || 0, ul.latency.jitter || 0);
+    var loss = r.lossPct || 0;
+    var why = fmtMs(lat) + ' ms under load, jitter ' + fmtMs(jit) + ' ms, ' + fmtPct(loss) + '% loss';
+    var out = [];
+
+    // Video calls: Microsoft's published Teams network targets (Microsoft Learn).
+    var calls;
+    if (ul.mbps < 1.5) calls = ['Poor', 'Upload of ' + fmtMbps(ul.mbps) + ' Mbps is too slow to send video'];
+    else if (lat < 60 && jit < 15 && loss < 0.1) calls = ['Great', 'Inside Microsoft’s stricter network-edge targets (60 ms, 15 ms, 0.1%): ' + why];
+    else if (lat < 100 && jit < 30 && loss < 1) calls = ['Good', 'Inside Microsoft’s Teams targets (100 ms, 30 ms, 1%): ' + why];
+    else {
+      var miss = [];
+      if (lat >= 100) miss.push(fmtMs(lat) + ' ms under load (target under 100)');
+      if (jit >= 30) miss.push('jitter ' + fmtMs(jit) + ' ms (under 30)');
+      if (loss >= 1) miss.push(fmtPct(loss) + '% loss (under 1%)');
+      calls = ['Poor', 'Misses Teams’ targets: ' + miss.join(', ')];
+    }
+    out.push(['Video calls', calls[0], calls[1]]);
+
+    // Gaming: Cloudflare AIM's bands for loss, unloaded latency and added latency; rated by the weakest.
+    var LV = ['Poor', 'Okay', 'Good', 'Great'];
+    var idleMs = (r.idle && r.idle.median) || 0;
+    var bl = Math.max(0, dl.bloatMs || 0, ul.bloatMs || 0);
+    var band = function (v, a, b, c) { return v < a ? 3 : v < b ? 2 : v < c ? 1 : 0; };
+    var gl = loss < 1 ? 3 : loss < 5 ? 1 : 0;
+    var gp = band(idleMs, 10, 20, 50), gb = band(bl, 10, 20, 50);
+    var gw = Math.min(gl, gp, gb);
+    var weakest = gw === gp ? 'ping ' + fmtMs(idleMs) + ' ms' : gw === gb ? 'bufferbloat +' + fmtMs(bl) + ' ms' : fmtPct(loss) + '% loss';
+    out.push(['Gaming', LV[gw], (gw === 3 ? 'Top Cloudflare AIM band on every measure' : 'Held back by ' + weakest) + ' (ping ' + fmtMs(idleMs) + ' ms, +' + fmtMs(bl) + ' ms busy, ' + fmtPct(loss) + '% loss)']);
+
+    // Streaming: Netflix's recommended speeds (15 Mbps 4K, 5 Mbps 1080p, 3 Mbps 720p).
+    var d = dl.mbps;
+    var stream = d >= 15 ? ['Great', fmtMbps(d) + ' Mbps: enough for 4K (Netflix: 15 Mbps)' + (d >= 30 ? ', on more than one screen' : '')]
+      : d >= 5 ? ['Good', fmtMbps(d) + ' Mbps: 1080p, not 4K (Netflix: 5 Mbps)']
+      : d >= 3 ? ['Okay', fmtMbps(d) + ' Mbps: 720p (Netflix: 3 Mbps)'] : ['Poor', fmtMbps(d) + ' Mbps: below Netflix’s 720p recommendation'];
+    out.push(['Streaming', stream[0], stream[1]]);
+    return out;
+  }
+
+  function renderQuality(r) {
+    var box = $('quality'); box.textContent = '';
+    if (!r) {
+      var w = running ? waiting('Grading once the test finishes…') : h('p', 'muted', 'Your bufferbloat grade and what the line is good for appear after a test.');
+      w.style.marginTop = '0.7rem'; box.appendChild(w); return;
+    }
+    var bloat = Math.max(0, r.download.bloatMs || 0, r.upload.bloatMs || 0);
+    var grade = bloatGrade(bloat);
+    var wrap = h('div', 'qual');
+    var g = h('div', 'grade g-' + grade.replace('+', 'p'));
+    g.appendChild(h('span', 'letter', grade));
+    var gt = h('div');
+    gt.appendChild(h('p', 'label', 'Bufferbloat'));
+    gt.appendChild(h('p', 'gline', '+' + fmtMs(bloat) + ' ms when the line is busy'));
+    gt.appendChild(h('p', 'gsub', (r.download.bloatMs >= r.upload.bloatMs ? 'worst while downloading' : 'worst while uploading') + ' · Cloudflare AIM bands'));
+    g.appendChild(gt);
+    wrap.appendChild(g);
+    var uses = h('div', 'uses');
+    ratings(r).forEach(function (x) {
+      var u = h('div', 'use');
+      var top = h('p', 'use-top'); top.appendChild(h('span', 'use-name', x[0])); top.appendChild(h('span', 'pill p-' + x[1].toLowerCase(), x[1]));
+      u.appendChild(top); u.appendChild(h('p', 'use-why', x[2]));
+      uses.appendChild(u);
+    });
+    wrap.appendChild(uses);
+    box.appendChild(wrap);
+    var sv = r.download.server;
+    if (sv) {
+      box.appendChild(h('p', 'qnote', 'The Cloudflare server’s own TCP stack saw ' + fmtMs(sv.minRtt) + ' ms minimum round trip and resent ' +
+        fmtPct(sv.retransPct) + '% of the packets it sent you during the download (' + sv.retrans + ' of ' + sv.sent.toLocaleString() + '): ' +
+        (sv.retransPct < 0.5 ? 'very little loss on the way to you.' : sv.retransPct < 2 ? 'some loss on the way to you, normal for a busy line.' : 'noticeable loss on the way to you.')));
+    }
+  }
+
+  // ------------------------------------------------------------------ Route
+  function hopAvg(hp) { var ok = hp.rtts.filter(function (v) { return v >= 0; }); return ok.length ? ok.reduce(function (a, b) { return a + b; }, 0) / ok.length : null; }
+
+  function renderRoute(hops, r) {
+    var box = $('route'); box.textContent = '';
+    if (!hops) {
+      var m = running && !r ? waiting('Traced after the speed test…') : h('p', 'muted', r ? 'No route for this test (route tracing needs Windows’ ping service).' : 'The path from you to the server, hop by hop, appears after a test.');
+      m.style.marginTop = '0.7rem'; box.appendChild(m); return;
+    }
+    if (!hops.length) { var e = h('p', 'muted', 'No router on the way answered.'); e.style.marginTop = '0.7rem'; box.appendChild(e); return; }
+    // A router can be slow to answer its own pings while passing traffic at full
+    // speed. The real delay at each hop is no more than at any hop after it, so
+    // the path's latency is the lowest average from that hop onward.
+    var avgs = hops.map(hopAvg), floor = new Array(hops.length), lo = Infinity;
+    for (var k = hops.length - 1; k >= 0; k--) { if (avgs[k] != null) lo = Math.min(lo, avgs[k]); floor[k] = lo === Infinity ? null : lo; }
+    var max = 1, prev = 0, jump = { at: -1, ms: 0 };
+    hops.forEach(function (hp, i) {
+      if (avgs[i] == null) return;
+      max = Math.max(max, avgs[i]);
+      if (floor[i] - prev > jump.ms) jump = { at: i, ms: floor[i] - prev };
+      prev = floor[i];
+    });
+    var t = h('table', 'route');
+    var head = t.createTHead().insertRow();
+    ['Hop', 'Router', 'Pings', 'Average', ''].forEach(function (x, i) { var th = h('th', i >= 2 && i < 4 ? 'n' : null, x); head.appendChild(th); });
+    var body = t.createTBody();
+    hops.forEach(function (hp, i) {
+      var tr = body.insertRow(); if (hp.dest) tr.className = 'dest';
+      tr.insertCell().textContent = hp.ttl;
+      var who = tr.insertCell(); who.className = 'who';
+      if (!hp.ip) who.appendChild(h('span', 'muted', 'no answer'));
+      else { who.appendChild(document.createTextNode(hp.host || hp.ip)); if (hp.host) who.appendChild(h('small', null, hp.ip)); }
+      if (hp.dest) who.appendChild(h('span', 'tagline', 'server'));
+      var pc = tr.insertCell(); pc.className = 'n pings';
+      pc.textContent = hp.rtts.map(function (v) { return v >= 0 ? fmtMs(v) : '*'; }).join('  ');
+      var a = hopAvg(hp), ac = tr.insertCell(); ac.className = 'n';
+      ac.textContent = a == null ? '—' : fmtMs(a) + ' ms';
+      var bcell = tr.insertCell(); bcell.className = 'barcell';
+      var bc = h('div', 'barwrap'); bcell.appendChild(bc);
+      if (a != null) { var b = h('i', 'hbar'); b.style.width = Math.max(2, a / max * 72) + '%'; bc.appendChild(b); }
+      if (i === jump.at && jump.ms >= 3) { tr.classList.add('jump'); bc.appendChild(h('span', 'jumpnote', '+' + fmtMs(jump.ms) + ' ms here')); }
+      else if (a != null && floor[i] != null && a - floor[i] >= 5 && !hp.dest) { tr.classList.add('slowhop'); bc.appendChild(h('span', 'slownote', 'slow to answer')); }
+    });
+    box.appendChild(t);
+    var note = 'Routers answer these pings at low priority, so a hop that is slower than the hops after it is that router being slow to reply, not delay on your path.';
+    if (jump.at >= 0 && jump.ms >= 3) note = 'Most delay is added at hop ' + hops[jump.at].ttl + ' (+' + fmtMs(jump.ms) + ' ms' +
+      (jump.at <= 2 ? ', usually your modem\u2019s link to the ISP' : '') + '). ' + note;
+    box.appendChild(h('p', 'cmp-note', note));
+  }
+
+  // ------------------------------------------------------------------ Export
+  function download(name, type, text) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: type }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  function exportCSV() {
+    var cols = ['when', 'server_colo', 'server_ip', 'client_ip', 'isp', 'asn', 'distance_km', 'idle_ms', 'idle_jitter_ms', 'loss_pct',
+      'download_mbps', 'download_median_mbps', 'download_p90_mbps', 'upload_mbps', 'upload_median_mbps', 'upload_p90_mbps',
+      'download_loaded_ms', 'upload_loaded_ms', 'bufferbloat_ms', 'bufferbloat_grade', 'server_min_rtt_ms', 'server_retrans_pct', 'route_hops', 'probe_method', 'seconds_each_way', 'connections'];
+    var esc = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var rows = history.map(function (r) {
+      var bloat = Math.max(0, r.download.bloatMs || 0, r.upload.bloatMs || 0), sv = r.download.server || {};
+      return [new Date(r.when).toISOString(), r.server.colo, r.server.ip, r.client.ip, r.client.isp, r.client.asn, r.distanceKm ? r.distanceKm.toFixed(1) : '',
+        r.idle.median, r.idle.jitter, r.lossPct, r.download.mbps, r.download.median, r.download.p90, r.upload.mbps, r.upload.median, r.upload.p90,
+        r.download.latency.median, r.upload.latency.median, bloat.toFixed(2), bloatGrade(bloat), sv.minRtt, sv.retransPct,
+        r.route ? r.route.length : '', r.probeMethod, r.config.directionSeconds, r.config.streams].map(function (v) {
+          return esc(typeof v === 'number' ? Math.round(v * 1000) / 1000 : v);
+        }).join(',');
+    });
+    download('speedtest-results.csv', 'text/csv', cols.join(',') + '\n' + rows.join('\n') + '\n');
+  }
+  function exportJSON() { download('speedtest-results.json', 'application/json', JSON.stringify(history, null, 2)); }
+
+  // ------------------------------------------------------------------ Progress
+  function setProgress(d) {
+    var plan = d.plan || {}, idle = plan.idle || 0, dir = plan.dir || 0, total = plan.total || 1;
+    var t = d.result ? total : Math.min(total, d.lastT || 0);
+    var a = Math.min(t, idle), b = Math.max(0, Math.min(t - idle, dir)), c = Math.max(0, Math.min(t - idle - dir, dir));
+    if (d.result) { a = idle; b = dir; c = dir; }
+    $('pIdle').style.width = (a / total * 100) + '%';
+    $('pDown').style.width = (b / total * 100) + '%';
+    $('pUp').style.width = (c / total * 100) + '%';
+    var pct = Math.round((a + b + c) / total * 100);
+    $('pct').textContent = pct + '%';
+    $('progress').setAttribute('aria-valuenow', pct);
+  }
+
+  // ------------------------------------------------------------------ History table
+  function loadHistory() {
+    return fetch('/api/history').then(function (r) { return r.json(); }).then(function (list) {
+      history = Array.isArray(list) ? list : [];
+      renderHistory();
+    }).catch(function () { });
+  }
+
+  function renderHistory() {
+    var tb = $('history'); tb.textContent = '';
+    var rows = history.slice().reverse();
+    $('clearHist').hidden = $('exportCsv').hidden = $('exportJson').hidden = !rows.length;
+    if (!rows.length) {
+      var td = tb.insertRow().insertCell(); td.colSpan = 7; td.className = 'empty';
+      td.textContent = 'No results yet. Press Enter to run the first test.';
+      return;
+    }
+    rows.slice(0, 25).forEach(function (r) {
+      var tr = tb.insertRow(); tr.className = 'row' + (ui.openId === r.id ? ' open' : ''); tr.tabIndex = 0;
+      tr.setAttribute('aria-expanded', ui.openId === r.id ? 'true' : 'false');
+      var cells = [
+        [when(r.when), ''],
+        [(r.server.colo || '?') + '  ·  ' + (r.server.ip || ''), 'srv hide-sm'],
+        [fmtMs(r.idle.median) + ' ms', 'n'],
+        [fmtMs(r.idle.jitter) + ' ms', 'n'],
+        [fmtPct(r.lossPct) + ' %', 'n'],
+        [fmtMbps(r.download.mbps) + ' Mbps', 'n'],
+        [fmtMbps(r.upload.mbps) + ' Mbps', 'n']
+      ];
+      cells.forEach(function (c) { var td = tr.insertCell(); td.textContent = c[0]; if (c[1]) td.className = c[1]; });
+      var toggle = function () { ui.openId = ui.openId === r.id ? null : r.id; renderHistory(); };
+      tr.addEventListener('click', toggle);
+      tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+      if (ui.openId === r.id) {
+        var dtr = tb.insertRow(); dtr.className = 'detail';
+        var dtd = dtr.insertCell(); dtd.colSpan = 7; dtd.appendChild(details(r));
+      }
+    });
+  }
+
+  function details(r) {
+    var wrap = h('div'), grid = h('div', 'detail-grid');
+    function sect(title, rows) { var d = h('div'); d.appendChild(h('h4', null, title)); d.appendChild(facts(rows)); grid.appendChild(d); }
+    var c = r.client, s = r.server;
+    sect('Connection', [
+      ['Your IP', c.ip], ['ISP', c.isp ? c.isp + (c.asn ? ' (AS' + c.asn + ')' : '') : ''], ['Location', place(c)],
+      ['Server', (s.colo || '') + (s.city ? ', ' + s.city : '')], ['Server IP', s.ip],
+      ['Distance', r.distanceKm ? fmtKm(r.distanceKm) : 'unknown'],
+      ['Fibre floor', r.distanceKm ? fmtMs(r.fiberFloorMs) + ' ms' : ''],
+      ['Over floor', r.distanceKm && r.idle.median ? fmtMs(r.idle.median - r.fiberFloorMs) + ' ms' : '']
+    ]);
+    sect('Latency', [
+      ['Idle', fmtMs(r.idle.median) + ' ms (min ' + fmtMs(r.idle.min) + ', 90th ' + fmtMs(r.idle.p90) + ')'],
+      ['Idle jitter', fmtMs(r.idle.jitter) + ' ms'],
+      ['Downloading', fmtMs(r.download.latency.median) + ' ms (+' + fmtMs(Math.max(0, r.download.bloatMs)) + ')'],
+      ['  jitter', fmtMs(r.download.latency.jitter) + ' ms'],
+      ['Uploading', fmtMs(r.upload.latency.median) + ' ms (+' + fmtMs(Math.max(0, r.upload.bloatMs)) + ')'],
+      ['  jitter', fmtMs(r.upload.latency.jitter) + ' ms'],
+      ['Method', r.probeMethod]
+    ]);
+    sect('Packet loss', [
+      ['Overall', fmtPct(r.lossPct) + ' % (' + r.probesLost + ' of ' + r.probesSent + ')'],
+      ['Idle', fmtPct(r.idle.lossPct) + ' % (' + r.idle.lost + ' of ' + r.idle.sent + ')'],
+      ['Downloading', fmtPct(r.download.latency.lossPct) + ' % (' + r.download.latency.lost + ' of ' + r.download.latency.sent + ')'],
+      ['Uploading', fmtPct(r.upload.latency.lossPct) + ' % (' + r.upload.latency.lost + ' of ' + r.upload.latency.sent + ')'],
+      ['TCP resent', r.tcp ? fmtPct(r.tcp.ratePct) + ' % of segments' : 'not available']
+    ]);
+    var sv = r.download.server, bl = Math.max(0, r.download.bloatMs || 0, r.upload.bloatMs || 0);
+    sect('Quality', [
+      ['Bufferbloat', bloatGrade(bl) + ' (+' + fmtMs(bl) + ' ms)'],
+      ['Server RTT', sv ? fmtMs(sv.minRtt) + ' ms min, ' + fmtMs(sv.rtt) + ' ms typical' : 'not reported'],
+      ['Server resent', sv ? fmtPct(sv.retransPct) + ' % (' + sv.retrans + ' of ' + sv.sent + ')' : 'not reported'],
+      ['Route', r.route ? r.route.length + ' hops' : 'not traced']
+    ].concat(ratings(r).map(function (x) { return [x[0], x[1]]; })));
+    sect('Throughput', [
+      ['Download', fmtMbps(r.download.mbps) + ' Mbps'],
+      ['  median / 90th', fmtMbps(r.download.median) + ' / ' + fmtMbps(r.download.p90)],
+      ['  peak', fmtMbps(r.download.peak) + ' Mbps, ' + fmtBytes(r.download.bytes)],
+      ['Upload', fmtMbps(r.upload.mbps) + ' Mbps'],
+      ['  median / 90th', fmtMbps(r.upload.median) + ' / ' + fmtMbps(r.upload.p90)],
+      ['  peak', fmtMbps(r.upload.peak) + ' Mbps, ' + fmtBytes(r.upload.bytes)],
+      ['Test', r.config.directionSeconds + ' s each way, ' + r.config.streams + ' connections']
+    ]);
+    wrap.appendChild(grid);
+    var act = h('div', 'detail-actions');
+    var b = h('button', 'btn', 'Show this test on the graph'); b.type = 'button';
+    b.addEventListener('click', function (e) { e.stopPropagation(); viewTest(r); });
+    act.appendChild(b);
+    if (r.warnings && r.warnings.length) act.appendChild(h('span', 'warn', r.warnings.join(' ')));
+    wrap.appendChild(act);
+    return wrap;
+  }
+
+  function viewTest(r) {
+    if (running) { setStatus('A test is running; this view returns to it when you press Esc.'); }
+    viewing = (live && live.result && live.result.id === r.id) ? null : fromResult(r);
+    showResult(r);
+    setProgress(viewing || live);
+    if (viewing) setStatus('Showing the test from ' + when(r.when) + '.');
+    ui.dirty = true;
+    document.querySelector('.readouts').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ------------------------------------------------------------------ Graph
+  function niceAxis(v, ticks) {
+    var raw = v / (ticks || 5), mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+    var step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+    return { step: step, max: Math.ceil(v / step - 1e-9) * step };
+  }
+
+  var BUCKETS = [[20, '< 20 ms'], [50, '20–50 ms'], [100, '50–100 ms'], [250, '100–250 ms'], [Infinity, '250+ ms']];
+  var plot = { left: 0, w: 1, top: 0, h: 0, total: 1 };
+
+  function frame() {
+    ui.tick = (ui.tick || 0) + 1;
+    if (ui.dirty) { ui.dirty = false; draw(); if (sand.active) ui.dirty = true; }
+    else if (sand.ambient && view.style === 'liquid' && view.type !== 'pie' && ui.tick % 2 === 0) draw();
+    requestAnimationFrame(frame);
+  }
+
+  function setupCanvas() {
+    var cv = $('canvas'), box = cv.parentNode, w = box.clientWidth, hh = box.clientHeight;
+    var dpr = window.devicePixelRatio || 1;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(hh * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, hh);
+    return { w: w, h: hh };
+  }
+
+  function draw() {
+    var size = setupCanvas();
+    if (!size.w || !size.h) return;
+    var d = shown();
+    sand.active = false; sand.ambient = false;
+    renderLegend();
+    $('chartTitle').textContent = view.type === 'pie' ? 'Ping times by phase' : 'Speed and latency';
+    if (view.type === 'pie') return drawPie(d, size);
+    drawTimeline(d, size);
+  }
+
+  function renderLegend() {
+    var L = $('legend'); L.textContent = '';
+    function item(color, text, kind) { var s = h('span'); var sw = h('i', 'sw ' + (kind || '')); sw.style.background = color; s.appendChild(sw); s.appendChild(document.createTextNode(text)); L.appendChild(s); }
+    if (view.type === 'pie') {
+      BUCKETS.forEach(function (b, i) { item(C['b' + (i + 1)], b[1]); });
+      item(C.loss, 'Lost');
+      return;
+    }
+    var kind = view.type === 'line' ? 'lineSw' : '';
+    var dash = function (text) { var s0 = h('span'); var sw = h('i', 'sw dashSw'); s0.appendChild(sw); s0.appendChild(document.createTextNode(text)); L.appendChild(s0); };
+    if (view.style === 'liquid') {
+      var wc = waterColors();
+      item('linear-gradient(180deg,' + wc.line + ' 0 18%,' + rgb(wc.shallow) + ' 18%,' + rgb(wc.deep) + ')', 'Speed: the level of the fluid');
+      if (view.lat) item(wc.line, 'Ping under each panel', 'lineSw');
+      dash('Idle ping');
+      if (view.loss) item(wc.lost, 'Lost ping', 'tick');
+      return;
+    }
+    item(C.down, 'Download', kind); item(C.up, 'Upload', kind);
+    if (view.lat) item(C.lat, 'Ping under each panel', 'lineSw');
+    dash('Idle ping');
+    if (view.loss) item(C.loss, 'Lost ping', 'tick');
+  }
+
+  // The first moments of an upload only fill the computer's send buffers, which
+  // reads as a burst far above the line's real speed. The graph skips them.
+  var UPLOAD_SETTLE = 0.75;
+  function plotted(samples, phases) {
+    var up = phases.upload;
+    return samples.filter(function (s) { return !(s.phase === 'upload' && up && s.t - up.start < UPLOAD_SETTLE); });
+  }
+
+  function bucketSeconds(samples, phase, start) {
+    var out = [];
+    samples.forEach(function (s) {
+      if (s.phase !== phase) return;
+      var i = Math.floor((s.t - start - 1e-6) / 1);
+      if (i < 0) i = 0;
+      (out[i] = out[i] || []).push(s.mbps);
+    });
+    return out.map(function (a, i) { return a ? { t0: start + i, t1: start + i + 1, v: a.reduce(function (x, y) { return x + y; }, 0) / a.length } : null; }).filter(Boolean);
+  }
+
+  function pathThrough(pts, smooth) {
+    if (!pts.length) return;
+    g.moveTo(pts[0][0], pts[0][1]);
+    if (!smooth || pts.length < 3) { for (var i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); return; }
+    for (var j = 1; j < pts.length - 1; j++) {
+      var mx = (pts[j][0] + pts[j + 1][0]) / 2, my = (pts[j][1] + pts[j + 1][1]) / 2;
+      g.quadraticCurveTo(pts[j][0], pts[j][1], mx, my);
+    }
+    g.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+  }
+
+  function roundTop(x, y, w, hgt, r) {
+    r = Math.min(r, w / 2, hgt);
+    g.beginPath(); g.moveTo(x, y + hgt); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y);
+    g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r); g.lineTo(x + w, y + hgt); g.closePath();
+  }
+
+  // The graph is two stacked panels, Download above Upload. Each uses the full
+  // width for its own seconds and has its own speed scale, so neither is
+  // squeezed by the other; under each runs the latency during that phase, on a
+  // scale shared by both, with the idle ping as a dashed line to measure
+  // bufferbloat against.
+  function drawTimeline(d, size) {
+    var W = size.w, H = size.h, style = view.style, cols = view.type === 'columns';
+    var phases = d ? d.phases : {}, samples = d ? plotted(d.samples, phases) : [], probes = d ? d.probes : [];
+    var plan = (d && d.plan) || {};
+    var dur = plan.dir || (d && d.config && d.config.directionSeconds) || 15;
+    var latOn = view.lat || view.loss;
+    var liquid = style === 'liquid', water = waterColors();
+
+    var ok = probes.filter(function (p) { return p.rtt >= 0; });
+    var lax = niceAxis(ok.length ? Math.max(10, pctl(ok.map(function (p) { return p.rtt; }), 99) * 1.15) : 100, 2);
+    var idleRtts = ok.filter(function (p) { return p.phase === 'idle'; }).map(function (p) { return p.rtt; });
+    var idleMed = median(idleRtts);
+
+    var kinds = ['download', 'upload'], panels = {};
+    kinds.forEach(function (k) {
+      var ph = phases[k], list = samples.filter(function (s) { return s.phase === k; });
+      var bk = ph ? bucketSeconds(samples, k, ph.start) : [];
+      var peak = 0;
+      if (cols) bk.forEach(function (b) { peak = Math.max(peak, b.v); }); else list.forEach(function (s) { peak = Math.max(peak, s.avg); });
+      panels[k] = { kind: k, ph: ph, list: list, buckets: bk, ax: niceAxis(peak > 0 ? peak * 1.1 : (k === 'download' ? 100 : 50)) };
+    });
+
+    g.font = '13px ' + FONT;
+    var labW = Math.max(g.measureText(String(panels.download.ax.max)).width, g.measureText(String(panels.upload.ax.max)).width, latOn ? g.measureText(String(lax.max)).width : 0);
+    var left = Math.ceil(labW) + 14, right = 12, w = W - left - right;
+    var headH = 24, between = 24, titleH = 30, axisH = 20, gap = latOn ? 16 : 0;
+    var per = (H - headH - between) / 2;
+    var latH = latOn ? Math.round((per - titleH - axisH - gap) * 0.32) : 0;
+    var spH = per - titleH - axisH - gap - latH;
+    plot = { left: left, w: w, panels: [] };
+
+    // The idle phase, summed up in a line above the panels
+    g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = 'italic 13px ' + FONT; g.fillStyle = C.dim;
+    var idleText = !d ? '' : idleMed == null ? (phases.idle ? 'Measuring idle latency…' : '')
+      : 'Idle (' + Math.round(plan.idle || (d.config && d.config.idleSeconds) || 0) + ' s):  ping ' + fmtMs(idleMed) + ' ms  ·  jitter ' + fmtMs(meanStep(idleRtts)) + ' ms';
+    g.fillText(idleText, left, headH / 2);
+
+    kinds.forEach(function (k, idx) {
+      var P = panels[k], ph = P.ph, ax = P.ax;
+      var top = headH + idx * (per + between) + titleH;
+      var t0 = ph ? ph.start : 0, end = ph ? (ph.end != null ? ph.end : (d.lastT || ph.start)) : 0;
+      var color = liquid ? water.line : C[k];
+      var X = function (t) { return left + w * Math.max(0, Math.min(1, (t - t0) / dur)); };
+      var Y = function (v) { return top + spH - spH * Math.min(1, v / ax.max); };
+      var latTop = top + spH + gap;
+      var LY = function (v) { return latTop + latH - latH * Math.min(1, v / lax.max); };
+      plot.panels.push({ kind: k, top: top - titleH, bottom: latTop + latH + 4, t0: ph ? t0 : null, dur: dur });
+
+      // Title, and the phase's result on the right
+      g.textBaseline = 'alphabetic'; g.textAlign = 'left'; g.font = '15px ' + FONT; g.fillStyle = C.bright;
+      g.fillText(k === 'download' ? 'Download' : 'Upload', left, top - 13);
+      var st = d && ((d.result && d.result[k]) || (d.stats && d.stats[k]));
+      var lat = ok.filter(function (p) { return p.phase === k && p.t >= t0 + (plan.warmup || 0); }).map(function (p) { return p.rtt; });
+      var bits = [];
+      if (st) bits.push(fmtMbps(st.mbps) + ' Mbps average');
+      else if (P.list.length) bits.push(fmtMbps(P.list[P.list.length - 1].avg) + ' Mbps now');
+      if (lat.length) bits.push('ping ' + fmtMs(median(lat)) + ' ms' + (idleMed != null ? ' (+' + fmtMs(Math.max(0, median(lat) - idleMed)) + ')' : ''));
+      g.textAlign = 'right'; g.font = '13px ' + FONT; g.fillStyle = C.dim;
+      g.fillText(bits.join('   ·   '), left + w, top - 13);
+
+      // Speed grid
+      g.lineWidth = 1; g.textAlign = 'right'; g.textBaseline = 'middle'; g.font = '12px ' + FONT;
+      for (var n = 0; n * ax.step <= ax.max + 1e-9; n++) {
+        var v = +(n * ax.step).toFixed(2), y = Math.round(Y(v)) + 0.5;
+        if (style !== 'minimal' || n === 0) { g.strokeStyle = n === 0 ? C.line : C.grid; g.beginPath(); g.moveTo(left, y); g.lineTo(left + w, y); g.stroke(); }
+        if (n % 2 === 0 || ax.max / ax.step <= 4) { g.fillStyle = C.dim; g.fillText(String(v), left - 7, y); }
+      }
+
+      // Speed
+      if (!ph) {
+        g.textAlign = 'center'; g.font = 'italic 14px ' + FONT; g.fillStyle = C.dim;
+        g.fillText(!d ? (k === 'download' ? 'Press Start test, or Enter' : '') : k === 'download' ? 'After the idle pings' : 'After the download', left + w / 2, top + spH / 2);
+      } else if (liquid) {
+        drawLiquid(tank(k), d, { left: left, top: top, w: w, h: spH, max: ax.max, kind: k }, function (x) {
+          var t = t0 + x / w * dur;
+          if (cols) {
+            for (var i = 0; i < P.buckets.length; i++) {
+              var b = P.buckets[i], pad = (1 - 0.78) / 2;
+              if (t >= b.t0 + pad && t <= b.t1 - pad) return b.v;
+            }
+            return null;
+          }
+          var prev = null;
+          for (var j = 0; j < P.list.length; j++) {
+            var sp = P.list[j];
+            if (sp.t >= t) {
+              if (prev) return prev.avg + (sp.avg - prev.avg) * (t - prev.t) / (sp.t - prev.t);
+              return sp.t - t < 0.3 ? sp.avg : null;
+            }
+            prev = sp;
+          }
+          return null;
+        }, water);
+      } else {
+        g.save(); g.beginPath(); g.rect(left, top - 2, w, spH + 2); g.clip();
+        if (cols) {
+          var bw = w / dur, frac = style === 'minimal' ? 0.42 : style === 'smooth' ? 0.7 : 0.78;
+          P.buckets.forEach(function (b) {
+            var x0 = X(b.t0) + bw * (1 - frac) / 2, w0 = bw * frac, y0 = Y(b.v), hgt = top + spH - y0;
+            g.fillStyle = color;
+            if (robot()) {
+              var seg = 6, gapS = 2.2, base = top + spH;
+              g.save(); g.shadowColor = color; g.shadowBlur = 7;
+              for (var yy = base; yy > y0 + 0.5; yy -= seg + gapS) {
+                var hh = Math.min(seg, yy - y0);
+                g.globalAlpha = 0.55 + 0.45 * (1 - (yy - y0) / Math.max(1, hgt));
+                g.fillRect(x0, yy - hh, w0, hh);
+              }
+              g.restore(); g.globalAlpha = 1;
+              g.fillStyle = 'rgba(238, 243, 248, 0.8)'; g.fillRect(x0, y0, w0, 1.5);
+              return;
+            }
+            if (style === 'smooth') { g.globalAlpha = 0.9; roundTop(x0, y0, w0, hgt, 5); g.fill(); g.globalAlpha = 1; }
+            else if (style === 'minimal') { g.globalAlpha = 0.85; g.fillRect(x0, y0, w0, hgt); g.globalAlpha = 1; }
+            else { roundTop(x0, y0, w0, hgt, 2); g.fill(); }
+          });
+        } else {
+          var pts = P.list.map(function (p) { return [X(p.t), Y(p.avg)]; });
+          if (pts.length >= 2) {
+            var smooth = style === 'smooth';
+            if (view.type === 'area') {
+              var grd = g.createLinearGradient(0, top, 0, top + spH);
+              grd.addColorStop(0, hexA(color, style === 'minimal' ? 0.22 : 0.42)); grd.addColorStop(1, hexA(color, 0.04));
+              g.beginPath(); pathThrough(pts, smooth);
+              g.lineTo(pts[pts.length - 1][0], top + spH); g.lineTo(pts[0][0], top + spH); g.closePath();
+              g.fillStyle = grd; g.fill();
+            }
+            g.beginPath(); pathThrough(pts, smooth);
+            g.strokeStyle = color; g.lineJoin = 'round'; g.lineCap = 'round';
+            g.lineWidth = style === 'minimal' ? 1.4 : style === 'smooth' ? 2.6 : 2;
+            if (robot()) { g.save(); g.shadowColor = color; g.shadowBlur = 8; g.stroke(); g.restore(); }
+            g.stroke();
+            if (style !== 'minimal') { var e = pts[pts.length - 1]; dot(e[0], e[1], color); }
+          }
+        }
+        g.restore();
+      }
+
+      // Latency during this phase
+      if (latOn) {
+        g.textAlign = 'right'; g.textBaseline = 'middle'; g.font = '11px ' + FONT; g.lineWidth = 1;
+        [0, lax.max].forEach(function (lv, m) {
+          var ly = Math.round(LY(lv)) + 0.5;
+          g.strokeStyle = m === 0 ? C.line : C.grid; g.beginPath(); g.moveTo(left, ly); g.lineTo(left + w, ly); g.stroke();
+          g.fillStyle = C.dim; g.fillText(String(lv), left - 7, ly);
+        });
+        g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.font = 'italic 11px ' + FONT; g.fillStyle = C.dim;
+        g.fillText('ping, ms', left + 4, latTop + 11);
+        if (idleMed != null) {                          // the idle ping, to read bufferbloat against
+          var iy = Math.round(LY(idleMed)) + 0.5;
+          g.save(); g.setLineDash([4, 4]); g.strokeStyle = hexA(C.dim, 0.9); g.beginPath(); g.moveTo(left, iy); g.lineTo(left + w, iy); g.stroke(); g.restore();
+          g.textAlign = 'right'; g.fillText('idle ' + fmtMs(idleMed), left + w - 2, iy - 3);
+        }
+        var mine = ok.filter(function (p) { return p.phase === k; }).sort(function (a, b) { return a.t - b.t; });
+        if (view.lat && mine.length && ph) {
+          g.save(); g.beginPath(); g.rect(left, latTop - 1, w, latH + 2); g.clip();
+          var latColor = liquid ? water.line : C.lat;
+          if (style === 'minimal') {
+            g.fillStyle = hexA(latColor, 0.8);
+            mine.forEach(function (p) { g.beginPath(); g.arc(X(p.t), LY(p.rtt), 1.6, 0, Math.PI * 2); g.fill(); });
+          } else {
+            var series = mine;
+            if (style === 'smooth' || liquid) {
+              series = mine.map(function (p, i) {
+                var win = mine.slice(Math.max(0, i - 2), i + 3).map(function (q) { return q.rtt; });
+                return { t: p.t, rtt: median(win) };
+              });
+            }
+            if (liquid && glowMode()) { g.shadowColor = latColor; g.shadowBlur = 8; }
+            g.beginPath(); pathThrough(series.map(function (p) { return [X(p.t), LY(p.rtt)]; }), style === 'smooth' || liquid);
+            g.strokeStyle = latColor; g.lineWidth = style === 'smooth' || liquid ? 1.7 : 1.2; g.lineJoin = 'round'; g.stroke();
+          }
+          g.restore();
+        }
+        if (view.loss && ph) {
+          g.fillStyle = liquid ? water.lost : C.loss;
+          probes.forEach(function (p) {
+            if (p.rtt >= 0 || p.phase !== k) return;
+            g.fillRect(Math.round(X(p.t)) - 1, latTop, 2, latH);
+          });
+        }
+      }
+
+      // Seconds into the phase
+      var stepT = dur <= 10 ? 1 : dur <= 20 ? 2 : 5, baseY = latOn ? latTop + latH : top + spH;
+      g.textAlign = 'center'; g.textBaseline = 'top'; g.strokeStyle = C.line; g.fillStyle = C.dim; g.font = '12px ' + FONT;
+      for (var s = 0; s <= dur + 1e-9; s += stepT) {
+        var x = Math.round(left + w * s / dur) + 0.5;
+        g.beginPath(); g.moveTo(x, baseY); g.lineTo(x, baseY + 4); g.stroke();
+        g.fillText(s + ' s', x, baseY + 6);
+      }
+
+      // Readout: a hairline through this panel when pointing into it
+      var at = ui.hoverT != null ? ui.hoverT : ui.focusT;
+      if (at != null && ph && at >= t0 && at <= t0 + dur) {
+        var near = null, np = null;
+        P.list.forEach(function (s2) { if (Math.abs(s2.t - at) <= 0.3 && (!near || Math.abs(s2.t - at) < Math.abs(near.t - at))) near = s2; });
+        probes.forEach(function (p) { if (p.phase === k && Math.abs(p.t - at) <= 0.15 && (!np || Math.abs(p.t - at) < Math.abs(np.t - at))) np = p; });
+        var hx = Math.round(X(at)) + 0.5;
+        g.strokeStyle = C.dim; g.lineWidth = 1; g.setLineDash([3, 3]);
+        g.beginPath(); g.moveTo(hx, top); g.lineTo(hx, baseY); g.stroke(); g.setLineDash([]);
+        if (near && !cols && !liquid) dot(X(near.t), Y(near.avg), color);
+        var parts = [(k === 'download' ? 'Download' : 'Upload') + ', ' + (at - t0).toFixed(1) + ' s'];
+        if (near) parts.push(fmtMbps(cols ? near.mbps : near.avg) + ' Mbps');
+        if (np) parts.push(np.rtt >= 0 ? 'ping ' + fmtMs(np.rtt) + ' ms' : 'ping lost');
+        readoutText = parts.join('  ·  ');
+      }
+    });
+    $('readout').textContent = readoutText; readoutText = '';
+  }
+  var readoutText = '';
+
+  // ------------------------------------------------------------------ Liquid: glowing cloudy fluid
+  // Each panel is a glass tank of luminous, cloudy fluid. Its level follows the
+  // speed curve, but it moves like a liquid: it rises toward the level with a
+  // little weight, neighbouring columns pull on each other like a thick fluid,
+  // and the surface keeps two slow swells moving across it. Inside, soft clouds
+  // of light drift at different speeds, brightest just under the surface. Two
+  // colours only: deep blue, and the aqua of its glow.
+  function waterColors() {
+    var light = document.documentElement.dataset.theme === 'light';
+    return light
+      ? { deep: [18, 62, 98], shallow: [44, 120, 160], line: '#1F9CC4', glow: 'rgba(31, 156, 196, 0.5)', cloud: [150, 220, 240], lost: 'rgba(16, 40, 60, 0.45)', abyss: 'rgba(6, 20, 36, 0.45)' }
+      : { deep: [10, 44, 76], shallow: [26, 96, 140], line: '#66DAF3', glow: 'rgba(102, 218, 243, 0.75)', cloud: [140, 228, 250], lost: 'rgba(235, 245, 250, 0.55)', abyss: 'rgba(2, 8, 18, 0.6)' };
+  }
+  function mix(a, b, f) { return [0, 1, 2].map(function (i) { return Math.round(a[i] + (b[i] - a[i]) * f); }); }
+  function rgb(c, k) { k = k || 1; return 'rgb(' + Math.min(255, Math.round(c[0] * k)) + ',' + Math.min(255, Math.round(c[1] * k)) + ',' + Math.min(255, Math.round(c[2] * k)) + ')'; }
+  function rgba(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+
+  var COL = 2;                                   // column width in CSS pixels
+  var sand = { active: false, ambient: false };  // any tank moving, any tank holding fluid
+  var tanks = {};
+  function tank(kind) { return tanks[kind] || (tanks[kind] = { key: null }); }
+  var reducedMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function glowMode() { return document.documentElement.dataset.theme !== 'light'; }
+
+  // Soft clouds of light, drawn once and tiled. Blobs that cross an edge are
+  // drawn again on the other side, so the tile repeats without a seam.
+  var cloudTiles = {};
+  function cloudTile(color, seed) {
+    var key = color.join(',') + '|' + seed;
+    if (cloudTiles[key]) return cloudTiles[key];
+    var W = 420, H = 220, c = document.createElement('canvas'); c.width = W; c.height = H;
+    var x = c.getContext('2d'), rnd = seed;
+    var rand = function () { rnd = (rnd * 16807) % 2147483647; return rnd / 2147483647; };
+    for (var i = 0; i < 70; i++) {
+      var bx = rand() * W, by = rand() * H, r = 18 + rand() * 62, a = 0.05 + rand() * 0.16;
+      [-W, 0, W].forEach(function (ox) {
+        [-H, 0, H].forEach(function (oy) {
+          var gr = x.createRadialGradient(bx + ox, by + oy, 0, bx + ox, by + oy, r);
+          gr.addColorStop(0, rgba(color, a)); gr.addColorStop(1, rgba(color, 0));
+          x.fillStyle = gr; x.fillRect(bx + ox - r, by + oy - r, r * 2, r * 2);
+        });
+      });
+    }
+    return (cloudTiles[key] = c);
+  }
+  function tileAcross(tile, left, top, w, h, ox, oy, scale) {
+    var tw = tile.width * scale, th = tile.height * scale;
+    var sx = ((ox % tw) + tw) % tw, sy = ((oy % th) + th) % th;
+    for (var x = left - sx; x < left + w; x += tw)
+      for (var y = top - sy; y < top + h; y += th) g.drawImage(tile, x, y, tw, th);
+  }
+
+  function drawLiquid(T, d, geo, target, water) {
+    var cols = Math.max(1, Math.floor(geo.w / COL));
+    var key = [d ? d.id : 'none', geo.kind, Math.round(geo.w), Math.round(geo.h), view.type].join('|');
+    var now = performance.now(), tsec = now / 1000;
+    var dt = Math.min(0.05, T.last ? (now - T.last) / 1000 : 0.016);
+    T.last = now;
+
+    if (key !== T.key) {                         // a new test, size or shape: an empty tank
+      T.key = key; T.lvl = new Float32Array(cols); T.vel = new Float32Array(cols); T.max = geo.max;
+    } else if (geo.max !== T.max && T.max) {
+      var f = T.max / geo.max;                   // a faster moment rescaled the panel: the fluid settles to it
+      for (var c0 = 0; c0 < cols; c0++) T.lvl[c0] *= f;
+      T.max = geo.max;
+    }
+
+    // Glass: a faint tint behind the fluid
+    g.save(); roundRect(geo.left - 3, geo.top - 6, geo.w + 6, geo.h + 9, 10); g.fillStyle = C.glass; g.fill(); g.restore();
+
+    // Where the fluid should stand in each column
+    var goal = new Float32Array(cols), has = new Uint8Array(cols);
+    for (var c = 0; c < cols; c++) {
+      var v = target(c * COL + COL / 2);
+      if (v == null) continue;
+      goal[c] = geo.h * Math.min(1, Math.max(0, v) / geo.max); has[c] = 1;
+    }
+
+    // Move toward it like a thick liquid: a spring with damping, then a little
+    // viscosity pulling each column toward its neighbours.
+    var L = T.lvl, V = T.vel, moving = false;
+    if (reducedMotion) { for (c = 0; c < cols; c++) L[c] = goal[c]; }
+    else {
+      for (c = 0; c < cols; c++) {
+        var acc = (goal[c] - L[c]) * 18 - V[c] * 7.5;
+        V[c] += acc * dt; L[c] = Math.max(0, L[c] + V[c] * dt);
+        if (!has[c] && L[c] < 0.3) { L[c] = 0; V[c] = 0; }
+        if (Math.abs(goal[c] - L[c]) > 0.4 || Math.abs(V[c]) > 0.5) moving = true;
+      }
+      for (c = 1; c < cols - 1; c++) {
+        if (has[c] && has[c - 1] && has[c + 1]) L[c] += ((L[c - 1] + L[c + 1]) / 2 - L[c]) * 0.18;
+      }
+    }
+
+    // The surface, with two slow swells; split wherever the fluid stops (gaps between columns)
+    var segs = [], cur = null, amp = reducedMotion ? 0 : 1.3;
+    for (c = 0; c < cols; c++) {
+      if (L[c] < 0.6) { if (cur) { segs.push(cur); cur = null; } continue; }
+      var wave = amp * (Math.sin(tsec * 1.5 + c * 0.085) * 0.75 + Math.sin(tsec * 2.6 - c * 0.19) * 0.4);
+      var y = geo.top + geo.h - Math.max(0, L[c] + Math.min(wave, L[c] * 0.5));
+      (cur = cur || []).push([geo.left + c * COL + COL / 2, y]);
+    }
+    if (cur) segs.push(cur);
+
+    var glow = glowMode(), any = false;
+    g.save();
+    // The body: a clip to the fluid's shape, then layers of light inside it
+    g.beginPath();
+    segs.forEach(function (pts) {
+      if (pts.length < 2) return;
+      any = true;
+      var x0 = pts[0][0] - COL / 2, x1 = pts[pts.length - 1][0] + COL / 2;
+      g.moveTo(x0, geo.top + geo.h); g.lineTo(x0, pts[0][1]);
+      for (var i = 0; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+      g.lineTo(x1, pts[pts.length - 1][1]); g.lineTo(x1, geo.top + geo.h); g.closePath();
+    });
+    if (any) {
+      g.save();
+      g.clip();
+      // translucent depth: brighter near the top of the tank, deeper below
+      var body = g.createLinearGradient(0, geo.top, 0, geo.top + geo.h);
+      body.addColorStop(0, rgba(water.shallow, glow ? 0.88 : 0.9)); body.addColorStop(1, rgba(water.deep, glow ? 0.95 : 0.95));
+      g.fillStyle = body; g.fillRect(geo.left, geo.top - 4, geo.w, geo.h + 4);
+      // clouds of light drifting at two speeds and scales
+      g.globalCompositeOperation = glow ? 'lighter' : 'source-over';
+      g.globalAlpha = glow ? 0.75 : 0.45;
+      tileAcross(cloudTile(water.cloud, 7), geo.left, geo.top, geo.w, geo.h, tsec * 9, Math.sin(tsec * 0.3) * 12, 1);
+      g.globalAlpha = glow ? 0.5 : 0.3;
+      tileAcross(cloudTile(water.cloud, 31), geo.left, geo.top, geo.w, geo.h, -tsec * 15, tsec * 3, 0.62);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      // the light under the surface: wide soft strokes along it, inside the fluid
+      segs.forEach(function (pts) {
+        if (pts.length < 2) return;
+        [[26, 0.07], [14, 0.1], [6, 0.16]].forEach(function (s) {
+          g.beginPath(); pathThrough(pts, true);
+          g.strokeStyle = glow ? hexA(water.line, s[1] * 1.6) : hexA(water.line, s[1]); g.lineWidth = s[0]; g.stroke();
+        });
+      });
+      // the deep: darker toward the bottom
+      var abyss = g.createLinearGradient(0, geo.top + geo.h * 0.45, 0, geo.top + geo.h);
+      abyss.addColorStop(0, 'rgba(0,0,0,0)'); abyss.addColorStop(1, water.abyss);
+      g.fillStyle = abyss; g.fillRect(geo.left, geo.top, geo.w, geo.h);
+      g.restore();
+
+      // The surface line itself, glowing, breathing very slightly
+      g.lineJoin = 'round'; g.lineCap = 'round';
+      segs.forEach(function (pts) {
+        if (pts.length < 2) return;
+        g.save();
+        if (glow) { g.shadowColor = water.glow; g.shadowBlur = 14; }
+        g.beginPath(); pathThrough(pts, true);
+        g.strokeStyle = water.line; g.lineWidth = 1.7; g.globalAlpha = 0.85 + (reducedMotion ? 0 : Math.sin(tsec * 1.9) * 0.12);
+        g.stroke(); g.restore();
+      });
+    }
+    g.restore();
+
+    drawGlass(geo);
+    sand.active = sand.active || moving;
+    sand.ambient = sand.ambient || (any && !reducedMotion);
+  }
+
+  function roundRect(x, y, w, hgt, r) {
+    g.beginPath(); g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r);
+    g.lineTo(x + w, y + hgt - r); g.quadraticCurveTo(x + w, y + hgt, x + w - r, y + hgt);
+    g.lineTo(x + r, y + hgt); g.quadraticCurveTo(x, y + hgt, x, y + hgt - r); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.closePath();
+  }
+
+  // The glass: walls with a rim at the open top, and light catching the left side.
+  function drawGlass(geo) {
+    var x = geo.left - 3, y = geo.top - 6, w = geo.w + 6, hgt = geo.h + 9;
+    g.save();
+    roundRect(x, y, w, hgt, 10);
+    g.lineWidth = 2.5; g.strokeStyle = C.glassRim; g.stroke();
+    g.lineWidth = 1; g.strokeStyle = C.glassEdge; g.stroke();
+    var sheen = g.createLinearGradient(x, 0, x + 34, 0);
+    sheen.addColorStop(0, 'rgba(255, 255, 255, 0)'); sheen.addColorStop(0.35, C.sheen); sheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    g.fillStyle = sheen; g.fillRect(x + 6, y + 10, 34, hgt - 20);
+    var sheen2 = g.createLinearGradient(x + w - 22, 0, x + w - 8, 0);
+    sheen2.addColorStop(0, 'rgba(255, 255, 255, 0)'); sheen2.addColorStop(0.5, C.sheen); sheen2.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    g.fillStyle = sheen2; g.fillRect(x + w - 22, y + 14, 14, hgt - 28);
+    g.lineWidth = 3; g.strokeStyle = C.glassRim;
+    g.beginPath(); g.moveTo(x + 10, y + 1.5); g.lineTo(x + w - 10, y + 1.5); g.stroke();
+    g.lineWidth = 1; g.strokeStyle = C.glassEdge;
+    g.beginPath(); g.moveTo(x + 10, y + 3.5); g.lineTo(x + w - 10, y + 3.5); g.stroke();
+    g.restore();
+  }
+
+  function robot() { return document.documentElement.dataset.theme === 'robot'; }
+
+  function phaseAt(phases, t) {
+    var names = { idle: 'idle', download: 'downloading', upload: 'uploading' };
+    for (var k in names) { var p = phases[k]; if (p && t >= p.start && t <= (p.end != null ? p.end : Infinity)) return names[k]; }
+    return '';
+  }
+
+  function dot(x, y, color) {
+    g.fillStyle = C.screen; g.beginPath(); g.arc(x, y, 6, 0, Math.PI * 2); g.fill();
+    g.fillStyle = color; g.beginPath(); g.arc(x, y, 4, 0, Math.PI * 2); g.fill();
+  }
+
+  function hexA(hex, a) {
+    var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    return m ? 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')' : hex;
+  }
+
+  // Pie: for each phase, how the pings came back. Bufferbloat shows as the
+  // download and upload rings turning from green toward brown.
+  function drawPie(d, size) {
+    var W = size.w, H = size.h, style = view.style;
+    var probes = d ? d.probes : [];
+    var groups = [['idle', 'Idle'], ['download', 'Downloading'], ['upload', 'Uploading']];
+    var cell = W / 3, r = Math.max(30, Math.min(cell * 0.36, (H - 70) / 2));
+    var thick = style === 'minimal' ? r * 0.16 : style === 'smooth' ? r * 0.34 : r * 0.42;
+    plot = { pie: true };
+    groups.forEach(function (gp, gi) {
+      var cx = cell * gi + cell / 2, cy = 14 + r + 8;
+      var list = probes.filter(function (p) { return p.phase === gp[0]; });
+      var counts = BUCKETS.map(function () { return 0; }), lost = 0;
+      list.forEach(function (p) {
+        if (p.rtt < 0) { lost++; return; }
+        for (var i = 0; i < BUCKETS.length; i++) if (p.rtt < BUCKETS[i][0]) { counts[i]++; break; }
+      });
+      var all = counts.concat([lost]), total = list.length;
+      var colors = [C.b1, C.b2, C.b3, C.b4, C.b5, C.loss];
+      g.lineWidth = thick;
+      if (!total) {
+        g.strokeStyle = C.grid; g.beginPath(); g.arc(cx, cy, r - thick / 2, 0, Math.PI * 2); g.stroke();
+      } else {
+        var a = -Math.PI / 2, gapA = style === 'smooth' ? 0.035 : style === 'classic' ? 0.012 : 0;
+        all.forEach(function (n, i) {
+          if (!n) return;
+          var span = n / total * Math.PI * 2;
+          g.strokeStyle = colors[i]; g.lineCap = style === 'smooth' && span > 0.12 ? 'round' : 'butt';
+          var pad = all.filter(Boolean).length > 1 ? gapA + (g.lineCap === 'round' ? thick / (2 * (r - thick / 2)) : 0) : 0;
+          var s0 = a + pad / 2, s1 = a + span - pad / 2;
+          if (s1 <= s0) { s0 = a; s1 = a + span; }
+          g.beginPath(); g.arc(cx, cy, r - thick / 2, s0, s1); g.stroke();
+          a += span;
+        });
+        g.lineCap = 'butt';
+      }
+      var ok = list.filter(function (p) { return p.rtt >= 0; }).map(function (p) { return p.rtt; });
+      g.fillStyle = C.bright; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = Math.round(Math.max(15, r * 0.3)) + 'px ' + FONT;
+      g.fillText(ok.length ? fmtMs(median(ok)) : '--', cx, cy - 4);
+      g.fillStyle = C.dim; g.font = 'italic 12px ' + FONT;
+      g.fillText(ok.length ? 'ms median' : 'no pings yet', cx, cy + Math.max(14, r * 0.22));
+      g.fillStyle = C.ink; g.font = '15px ' + FONT;
+      g.fillText(gp[1], cx, cy + r + 18);
+      g.fillStyle = C.dim; g.font = '13px ' + FONT;
+      g.fillText(total ? total + ' pings' + (lost ? ', ' + lost + ' lost' : '') : '', cx, cy + r + 37);
+    });
+    $('readout').textContent = '';
+  }
+
+  // ------------------------------------------------------------------ Graph controls
+  function syncControls() {
+    Array.prototype.forEach.call($('types').children, function (b) { b.setAttribute('aria-pressed', b.dataset.type === view.type ? 'true' : 'false'); });
+    $('style').value = view.style; $('showLat').checked = view.lat; $('showLoss').checked = view.loss;
+    $('showLat').disabled = $('showLoss').disabled = view.type === 'pie';
+  }
+  $('types').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    view.type = b.dataset.type; store('speedtest.view', view); syncControls(); ui.dirty = true;
+  });
+  $('style').addEventListener('change', function () { view.style = this.value; store('speedtest.view', view); ui.dirty = true; });
+  $('showLat').addEventListener('change', function () { view.lat = this.checked; store('speedtest.view', view); ui.dirty = true; });
+  $('showLoss').addEventListener('change', function () { view.loss = this.checked; store('speedtest.view', view); ui.dirty = true; });
+
+  var cv = $('canvas');
+  cv.addEventListener('pointermove', function (e) {
+    if (plot.pie || !plot.panels) return;
+    var r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, t = null;
+    plot.panels.forEach(function (p) {
+      if (p.t0 == null || y < p.top || y > p.bottom) return;
+      var f = (x - plot.left) / plot.w;
+      if (f >= 0 && f <= 1) t = p.t0 + f * p.dur;
+    });
+    ui.hoverT = t; ui.dirty = true;
+  });
+  cv.addEventListener('pointerleave', function () { ui.hoverT = null; ui.dirty = true; });
+  cv.addEventListener('focus', function () { ui.focusT = (shown() && shown().lastT) || 0; ui.dirty = true; });
+  cv.addEventListener('blur', function () { ui.focusT = null; ui.dirty = true; });
+  cv.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    var step = e.shiftKey ? 1 : 0.25;
+    var last = (shown() && shown().lastT) || 0;
+    ui.focusT = Math.max(0, Math.min(last, (ui.focusT || 0) + (e.key === 'ArrowLeft' ? -step : step)));
+    ui.dirty = true;
+  });
+  window.addEventListener('resize', function () { ui.dirty = true; });
+
+  // ------------------------------------------------------------------ Start / stop
+  function startOrStop() {
+    if (running) {
+      if (viewing) { viewing = null; if (live) { if (live.result) showResult(live.result); setProgress(live); } ui.dirty = true; }
+      post('/api/stop'); return;
+    }
+    post('/api/start').catch(function (e) { setStatus(e.message, true); });
+  }
+  $('start').addEventListener('click', startOrStop);
+  document.addEventListener('keydown', function (e) {
+    if ($('settings').open) return;
+    if (e.key === 'Escape' && running) { startOrStop(); return; }
+    if (e.key === 'Escape' && viewing) { viewing = null; if (live && live.result) showResult(live.result); else clearReadouts(); setStatus('Back to the latest test.'); ui.dirty = true; return; }
+    if (e.key === 'Enter' && !running && !e.repeat && !(e.target.closest && e.target.closest('button, a, input, select, canvas, tr, dialog'))) startOrStop();
+  });
+  $('clearHist').addEventListener('click', function () {
+    if (!confirmClear) { confirmClear = true; this.textContent = 'Click again to clear all results'; var b = this; setTimeout(function () { confirmClear = false; b.textContent = 'Clear history'; }, 4000); return; }
+    confirmClear = false; this.textContent = 'Clear history';
+    post('/api/history', { clear: true }).then(function (list) { history = list; ui.openId = null; renderHistory(); });
+  });
+  var confirmClear = false;
+  $('exportCsv').addEventListener('click', exportCSV);
+  $('exportJson').addEventListener('click', exportJSON);
+
+  // ------------------------------------------------------------------ Settings
+  function fillSettings(s) {
+    $('sDir').value = s.directionSeconds; $('sDirOut').textContent = s.directionSeconds + ' s';
+    $('sIdle').value = s.idleSeconds; $('sWarm').value = s.warmupSeconds;
+    $('sStreams').value = s.streams; $('sRate').value = s.probeRate;
+    $('sToken').value = ''; $('sToken').dataset.keep = s.radarToken ? '1' : '';
+    $('sToken').placeholder = s.radarToken ? 'A token is saved. Type a new one to replace it.' : 'Paste a token';
+    estimate();
+  }
+  function estimate() {
+    var dir = +$('sDir').value, idle = +$('sIdle').value;
+    $('sDirOut').textContent = dir + ' s';
+    var last = history[history.length - 1];
+    var dn = last ? last.download.mbps : 300, upv = last ? last.upload.mbps : 30;
+    var bytes = (dn + upv) * 1e6 / 8 * dir;
+    $('sEst').textContent = 'A test takes about ' + Math.round(idle + 2 * dir + 3) + ' seconds and moves about ' + fmtBytes(bytes) +
+      (last ? ' at your last speeds.' : ' at 300 / 30 Mbps.');
+  }
+  function openSettings() { if (settings) fillSettings(settings); $('sErr').hidden = true; $('sCheckOut').hidden = true; $('settings').showModal(); }
+  $('settingsBtn').addEventListener('click', openSettings);
+  $('sDir').addEventListener('input', estimate); $('sIdle').addEventListener('input', estimate);
+  $('sCheck').addEventListener('click', function () {
+    var out = $('sCheckOut'), btn = this;
+    out.hidden = false; out.style.color = ''; out.textContent = 'Checking with the Cloudflare Radar\u2122 API\u2026'; btn.disabled = true;
+    post('/api/checktoken', { token: $('sToken').value }).then(function (r) {
+      out.textContent = r.message; out.style.color = r.ok ? 'var(--up)' : 'var(--loss)';
+    }).catch(function (e) { out.textContent = 'Could not check: ' + e.message; out.style.color = 'var(--loss)'; })
+      .then(function () { btn.disabled = false; });
+  });
+  $('sCancel').addEventListener('click', function () { $('settings').close(); });
+  $('sDefaults').addEventListener('click', function () {
+    var d = settings.defaults; fillSettings(Object.assign({}, d, { radarToken: settings.radarToken }));
+  });
+  $('sForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var tok = $('sToken').value.trim();
+    var body = {
+      server: settings.server,
+      directionSeconds: +$('sDir').value, idleSeconds: +$('sIdle').value, warmupSeconds: +$('sWarm').value,
+      streams: +$('sStreams').value, probeRate: +$('sRate').value,
+      radarToken: tok || ($('sToken').dataset.keep ? '__keep__' : '')
+    };
+    post('/api/settings', body).then(function (s) { settings = s; $('settings').close(); setStatus(running ? 'Settings saved. They apply from the next test.' : 'Settings saved.'); if (live && live.result && !viewing) renderCompare(live.result); })
+      .catch(function (err) { $('sErr').hidden = false; $('sErr').textContent = 'Could not save: ' + err.message; });
+  });
+
+  // ------------------------------------------------------------------ Light, dark and robot
+  var THEMES = ['light', 'dark', 'robot'];
+  function applyTheme(t, save) {
+    var was = document.documentElement.dataset.theme;
+    document.documentElement.dataset.theme = t;
+    Array.prototype.forEach.call($('themes').querySelectorAll('button'), function (b) {
+      var on = b.dataset.theme === t;
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    if (save) {
+      try { localStorage.setItem('speedtest.theme', t); } catch (e) { }
+      // The robot's screens show columns; switching to it turns them on.
+      if (t === 'robot' && was !== 'robot' && view.type !== 'columns') { view.type = 'columns'; store('speedtest.view', view); syncControls(); }
+    }
+    readColors();
+    if (live && live.meta && !viewing) renderConnection(live.meta, live.result);
+    ui.dirty = true;
+  }
+  $('themes').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (b) applyTheme(b.dataset.theme, true);
+  });
+  $('themes').addEventListener('keydown', function (e) {
+    var step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    var i = (THEMES.indexOf(document.documentElement.dataset.theme) + step + THEMES.length) % THEMES.length;
+    applyTheme(THEMES[i], true);
+    $('themes').querySelector('[data-theme="' + THEMES[i] + '"]').focus();
+  });
+  if (window.matchMedia) {
+    // Until a choice is made here, follow the computer's setting as it changes.
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+      var saved = null; try { saved = localStorage.getItem('speedtest.theme'); } catch (err) { }
+      if (!saved) applyTheme(e.matches ? 'dark' : 'light', false);
+    });
+  }
+  applyTheme(document.documentElement.dataset.theme || 'light', false);
+
+  // ------------------------------------------------------------------ Guide
+  function openGuide() {
+    var id = location.hash.slice(1), d = id && document.getElementById(id);
+    if (d && d.tagName === 'DETAILS') { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }
+  window.addEventListener('hashchange', openGuide);
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a.info'); if (!a) return;
+    if (location.hash === a.getAttribute('href')) { e.preventDefault(); openGuide(); }
+  });
+
+  // ------------------------------------------------------------------ Start-up
+  syncControls();
+  clearReadouts();
+  fetch('/api/settings').then(function (r) { return r.json(); }).then(function (s) { settings = s; }).catch(function () { });
+  renderQuality(null); renderRoute(null);
+  (function () { var td = $('history').insertRow().insertCell(); td.colSpan = 7; td.className = 'empty'; td.appendChild(waiting('Loading results\u2026')); })();
+  loadHistory();
+  connect();
+  requestAnimationFrame(frame);
+  if (location.protocol === 'file:') setStatus('Open this page by running SpeedTest.exe. Opened as a file, it cannot run a test.', true);
+})();
+</script>
+</body>
+</html>

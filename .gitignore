@@ -1,0 +1,9 @@
+# Build output
+*.exe
+/speedtest
+/dist/
+
+# Local data the app writes next to itself
+settings.json
+history.json
+history.json.damaged-*
