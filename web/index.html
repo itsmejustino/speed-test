@@ -115,7 +115,8 @@
   }
   .bar h1 { font-size: 1.7rem; letter-spacing: 0.01em; color: var(--bright); }
   .bar h1 small { font-size: 0.95rem; color: var(--dim); font-style: italic; margin-left: 0.6rem; letter-spacing: 0; }
-  .head-right { display: flex; align-items: center; gap: 1rem; min-width: 0; }
+  .head-right { display: flex; align-items: center; justify-content: flex-end; gap: 1rem; min-width: 0; margin-left: auto; }
+  .bar h1 { flex: 0 1 auto; min-width: 0; }
   /* Colour-scheme switch: one knob that slides between sun, moon and the robot moon */
   .theme {
     position: relative; display: inline-flex; flex: none; padding: 3px; border: 1px solid var(--line); border-radius: 999px;
@@ -256,6 +257,8 @@
   #readout { color: var(--bright); }
 
   .progress { display: flex; align-items: center; gap: 1rem; }
+  .chart .progress { margin: 0.75rem 0 0.25rem; }
+  .chart .progress #pct { font-size: 0.85rem; min-width: 2.8rem; }
   .track { flex: 1; height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; display: flex; }
   .track i { display: block; height: 100%; width: 0; transition: width 0.25s linear; }
   #pIdle { background: var(--lat); opacity: 0.8; } #pDown { background: var(--down); } #pUp { background: var(--up); }
@@ -566,7 +569,7 @@
   :root[data-theme="robot"] tr.detail td, :root[data-theme="robot"] .results tbody tr.row.open { background: rgba(137, 168, 201, 0.06); }
 
   /* The graph is the main set: narrower, with a finial on top, standing on its console */
-  :root[data-theme="robot"] .box.chart { margin: 0 5.2rem; }
+  :root[data-theme="robot"] .box.chart { margin: 0.7rem 5.2rem 0; }
   :root[data-theme="robot"] .box.chart::before {
     content: ""; position: absolute; top: -17px; left: 50%; width: 22px; height: 11px; margin-left: -11px; z-index: 1;
     border-radius: 11px 11px 2px 2px; background: var(--metal); box-shadow: 0 0 0 1px #8C7A58, 0 -6px 0 -3px #C9B68E;
@@ -646,7 +649,7 @@
   }
   @media (max-width: 640px) { #chip { display: none; } }
   @media (max-width: 760px) {
-    :root[data-theme="robot"] .box.chart { margin: 0; }
+    :root[data-theme="robot"] .box.chart { margin: 0.7rem 0 0; }
     :root[data-theme="robot"] .console .tube, :root[data-theme="robot"] .console .grille, :root[data-theme="robot"] .console .knob { display: none; }
     :root[data-theme="robot"] .console { justify-content: center; }
   }
@@ -655,6 +658,7 @@
 
   [hidden] { display: none !important; }
   a.info { flex: none; }
+  .web-note { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--edge); font-size: 0.9rem; }
   dialog { max-height: calc(100dvh - 2rem); overflow: auto; overscroll-behavior: contain; }
   /* ---------------- Phones (iPhone and similar) ---------------- */
   body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
@@ -668,28 +672,42 @@
     dialog input, dialog select, select { font-size: 16px; }
   }
   @media (max-width: 640px) {
-    .bar { flex-wrap: wrap; gap: 0.75rem 1rem; padding: max(1rem, env(safe-area-inset-top)) 1rem 0; }
-    .bar h1 { font-size: 1.45rem; white-space: nowrap; flex-wrap: wrap; row-gap: 0; }
-    .bar h1 small { font-size: 0.85rem; margin-left: 0; }
+    .bar { gap: 0.75rem; align-items: flex-start; padding: max(1rem, env(safe-area-inset-top)) 1rem 0; }
+    .bar h1 { font-size: 1.45rem; flex-wrap: wrap; row-gap: 0; column-gap: 0.55rem; }
+    .bar h1 small { flex-basis: 100%; font-size: 0.85rem; margin: -0.1rem 0 0 calc(1.45rem + 0.55rem + 0.3rem); }
     main { padding: 1rem 1rem max(1.25rem, env(safe-area-inset-bottom)); gap: 1rem; }
     .box { padding: 1rem 1.05rem; }
     .results { padding: 1rem 1.05rem 0.6rem; }
     .box > h2, .results > h2, .label { letter-spacing: 0.1em; white-space: normal; flex-wrap: wrap; row-gap: 0.2rem; }
 
-    /* Status on its own line, then the buttons: Start across the full width */
+    /* Status on its own line, then one row of buttons: Start takes what's left */
     .prompt-row { gap: 0.6rem; }
-    .prompt-row .btn { flex: 1 1 0; padding: 0.55rem 0.8rem; }
-    #start { order: 9; flex: 1 1 100%; min-width: 0; padding: 0.85rem 1rem; }
+    #status { font-size: 1rem; }
+    .prompt-row .btn { flex: 0 0 auto; padding: 0.55rem 0.95rem; }
+    #start { order: 9; flex: 1 1 auto; min-width: 0; padding: 0.8rem 1rem; }
 
-    /* Readouts: two columns, words wrap instead of running out of the tile */
-    .readouts { gap: 0.75rem; }
-    .readouts .box { padding: 1rem 0.9rem 0.9rem; }
-    .readouts .box::before { left: 0.9rem; right: 0.9rem; }
-    .readouts .box:last-child { grid-column: 1 / -1; }
-    .readouts .box > h2 { font-size: 0.7rem; letter-spacing: 0.08em; gap: 0.4rem; }
-    .readouts .sicon { display: none; }
-    .num { font-size: 2.1rem; }
-    .sub { white-space: normal; overflow: visible; font-size: 0.8rem; line-height: 1.4; }
+    /* Graph: plot first, its controls underneath */
+    .box.chart { display: flex; flex-direction: column; }
+    .chart-head { display: contents; }
+    .chart-head > h2 { order: 0; }
+    .chart .progress { order: 1; }
+    .plot { order: 2; }
+    .chart-foot { order: 3; }
+    .tools { order: 4; margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--edge); }
+
+    /* Readouts, compact so the graph is on screen during a test: download and
+       upload large side by side, then ping, jitter and loss in a row of three */
+    .readouts { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.6rem; }
+    .readouts .box { grid-column: span 2; padding: 0.75rem 0.7rem 0.7rem; }
+    .readouts .box.down, .readouts .box.up { grid-column: span 3; order: -1; }
+    .readouts .box::before { left: 0.7rem; right: 0.7rem; }
+    .readouts .box > h2 { font-size: 0.66rem; letter-spacing: 0.07em; gap: 0.3rem; }
+    .readouts .sicon, .readouts a.info { display: none; }
+    .readouts .value { margin-top: 0.15rem; }
+    .num { font-size: 1.6rem; }
+    .readouts .box.down .num, .readouts .box.up .num { font-size: 2.2rem; }
+    .readouts .unit { font-size: 0.8rem; }
+    .sub { white-space: normal; overflow: visible; font-size: 0.74rem; line-height: 1.35; }
 
     /* History: what fits, the rest is in each row's details */
     .results-head { flex-wrap: wrap; gap: 0.25rem 1rem; }
@@ -712,13 +730,19 @@
     .legal { padding-left: 1rem; padding-right: 1rem; }
   }
   @media (max-width: 380px) {
-    .readouts { grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-    .num { font-size: 1.85rem; }
+    .theme { --tw: 2.4rem; --th: 2.3rem; }
+    .bar h1 { font-size: 1.25rem; }
+    .bar h1 small { margin-left: calc(1.25rem + 0.55rem + 0.3rem); }
+    .num { font-size: 1.4rem; }
+    .readouts .box.down .num, .readouts .box.up .num { font-size: 1.9rem; }
     .results .hide-xxs { display: none; }
   }
   /* The robot's frames are thick: give the content the room back on phones */
   @media (max-width: 640px) {
     :root[data-theme="robot"] .readouts .box { border-radius: 18px; }
+    /* the small tiles' valve lamps would sit on their titles: smaller, tucked in the corner */
+    :root[data-theme="robot"] .readouts .box::before { width: 0.5rem; height: 0.5rem; top: 0.6rem; right: 0.6rem; left: auto; }
+    :root[data-theme="robot"] .readouts .box > h2 { padding-right: 0.9rem; }
     :root[data-theme="robot"] .guide details .g-body { padding-left: 0; padding-right: 0; }
   }
 </style>
@@ -778,24 +802,11 @@
     </section>
   </div>
 
-  <section class="box" id="qualityBox">
-    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-gauge"/></svg>Connection quality<a class="info" href="#g-bloat" aria-label="What the quality grades means" title="What this means">?</a></h2>
-    <div id="quality"></div>
-  </section>
 
-  <section class="box">
-    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-handshake"/></svg>Connection<a class="info" href="#g-distance" aria-label="What distance means" title="What this means">?</a></h2>
-    <div class="conn" id="conn">
-      <div><h3>You</h3><p class="muted">Shown when a test starts.</p></div>
-      <div><h3>Server</h3><p class="muted">The data centre that answers you.</p></div>
-      <div><h3>Distance</h3><p class="muted">How far apart you are, and the fastest ping physics allows.</p></div>
-    </div>
-  </section>
 
-  <section class="box" id="routeBox">
-    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-route"/></svg>Route to the server<a class="info" href="#g-route" aria-label="What the route means" title="What this means">?</a></h2>
-    <div id="route"></div>
-  </section>
+
+
+
 
   <section class="box chart">
     <div class="chart-head">
@@ -814,6 +825,9 @@
         <label><input type="checkbox" id="showLoss" checked> Lost pings</label>
       </div>
     </div>
+    <div class="progress" role="progressbar" aria-label="Test progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress">
+    <div class="track"><i id="pIdle"></i><i id="pDown"></i><i id="pUp"></i></div><span id="pct">0%</span>
+    </div>
     <div class="plot"><canvas id="canvas" tabindex="0" role="img" aria-label="Graph of the test: speed over time, with latency and lost pings below. Arrow keys move a readout along it."></canvas></div>
     <div class="chart-foot"><div class="legend" id="legend"></div><div id="readout"></div></div>
   </section>
@@ -828,9 +842,24 @@
     <span class="grille"></span>
   </div>
 
-  <div class="progress" role="progressbar" aria-label="Test progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress">
-    <div class="track"><i id="pIdle"></i><i id="pDown"></i><i id="pUp"></i></div><span id="pct">0%</span>
-  </div>
+  <section class="box" id="qualityBox">
+    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-gauge"/></svg>Connection quality<a class="info" href="#g-bloat" aria-label="What the quality grades means" title="What this means">?</a></h2>
+    <div id="quality"></div>
+  </section>
+
+  <section class="box" id="connBox">
+    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-handshake"/></svg>Connection<a class="info" href="#g-distance" aria-label="What distance means" title="What this means">?</a></h2>
+    <div class="conn" id="conn">
+      <div><h3>You</h3><p class="muted">Shown when a test starts.</p></div>
+      <div><h3>Server</h3><p class="muted">The data centre that answers you.</p></div>
+      <div><h3>Distance</h3><p class="muted">How far apart you are, and the fastest ping physics allows.</p></div>
+    </div>
+  </section>
+
+  <section class="box" id="routeBox">
+    <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-route"/></svg>Route to the server<a class="info" href="#g-route" aria-label="What the route means" title="What this means">?</a></h2>
+    <div id="route"></div>
+  </section>
 
   <section class="box" id="cmpBox">
     <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-rank"/></svg>How you compare<a class="info" href="#g-ratings" aria-label="What the comparison means" title="What this means">?</a></h2>
@@ -3124,6 +3153,9 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
     document.documentElement.classList.add('web');
     $('sStreams').max = 4; $('sRate').max = 20;
     $('sToken').closest('.field').hidden = true;
+    $('routeBox').hidden = true; $('cmpBox').hidden = true;
+    var note = desktopNote('Route tracing, adapter details and comparing with other users need Windows features a browser doesn\u2019t have. ');
+    note.className = 'muted web-note'; $('connBox').appendChild(note);
     $('sStreams').nextElementSibling.textContent = 'Up to 4 in a browser, which opens at most six connections to one site and needs the rest for pings.';
     var ed = $('edition'); ed.textContent = 'web \u00b7 ';
     var a = h('a', null, 'desktop app'); a.href = DESKTOP_URL; a.target = '_blank'; a.rel = 'noopener'; ed.appendChild(a);
