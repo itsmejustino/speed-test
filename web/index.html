@@ -644,7 +644,7 @@
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false"><symbol id="i-delta" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16 H12 C17.5 16 17.5 7 23 7 H34"/><path d="M6 22 H15 C20.5 22 20.5 13 26 13 H34"/></g></symbol><symbol id="i-ping" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9.5 H25 Q30 9.5 30 14 Q30 18.5 25 18.5 H9"/><path d="M11.5 16 L9 18.5 L11.5 21"/><circle cx="34.5" cy="14" r="1.6" fill="currentColor" stroke="none"/></g></symbol><symbol id="i-jitter" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17 H8.5 C10.5 17 10.5 11 12.5 11 S14.5 17 16.5 17 H18 C20 17 20.5 6.5 22.5 6.5 S25 17 27 17 C28.3 17 28.6 13 29.9 13 S31.5 17 32.8 17 H35"/></g></symbol><symbol id="i-loss" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11 H13"/><path d="M17 11 H21"/><path d="M29 11 H35"/><circle cx="25" cy="19.5" r="1.6" fill="currentColor" stroke="none"/></g></symbol><symbol id="i-down" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7 H12 C17.5 7 17.5 16 23 16 H35"/><path d="M5 13 H15 C20.5 13 20.5 22 26 22 H35"/></g></symbol><symbol id="i-up" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16 H12 C17.5 16 17.5 7 23 7 H35"/><path d="M5 22 H15 C20.5 22 20.5 13 26 13 H35"/></g></symbol><symbol id="i-gauge" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 21 A11.5 11.5 0 0 1 31.5 21"/><path d="M20 21 L26.2 12.8"/><circle cx="20" cy="21" r="1.6" fill="currentColor" stroke="none"/><path d="M5 21 H6"/><path d="M34 21 H35"/></g></symbol><symbol id="i-handshake" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9 H12 C17 9 19 14 23 14 H26"/><path d="M35 19 H28 C23 19 21 14 17 14 H14"/></g></symbol><symbol id="i-route" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20 H8 L15.5 9 L24.5 17.5 L31.5 9 H35"/><circle cx="8" cy="20" r="1.9" fill="currentColor" stroke="none"/><circle cx="15.5" cy="9" r="1.9" fill="currentColor" stroke="none"/><circle cx="24.5" cy="17.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="31.5" cy="9" r="1.9" fill="currentColor" stroke="none"/></g></symbol><symbol id="i-phase" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13 C10 13 11 6 16 6 S22 13 27 13 H35"/><path d="M5 21 H10 C15 21 16 14 21 14 S27 21 32 21 H35"/></g></symbol><symbol id="i-rank" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7.5 H31"/><path d="M5 14 H24"/><path d="M5 20.5 H18"/><circle cx="34" cy="7.5" r="1.6" fill="currentColor" stroke="none"/></g></symbol><symbol id="i-history" viewBox="0 0 40 28"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22 H35"/><path d="M10 22 V16"/><path d="M16 22 V11"/><path d="M22 22 V14"/><path d="M28 22 V8.5"/></g></symbol></svg>
 <header class="bar">
-  <h1><svg class="mark" aria-hidden="true" focusable="false"><use href="#i-delta"/></svg>Speed Test <small>native engine</small></h1>
+  <h1><svg class="mark" aria-hidden="true" focusable="false"><use href="#i-delta"/></svg>Speed Test <small id="edition">native engine</small></h1>
   <div class="head-right">
     <span id="chip">speed.cloudflare.com</span>
     <div class="theme" role="radiogroup" aria-label="Colour scheme" id="themes">
@@ -1062,13 +1062,409 @@
     };
   }
 
+  // ------------------------------------------------------------------ Web version
+  // Served from anywhere but this computer's own program, the page measures from
+  // the browser itself: transfers with fetch and XMLHttpRequest, latency from
+  // small requests timed by the browser's Resource Timing, minus the time
+  // Cloudflare's server reports it spent (Server-Timing). Settings and history
+  // stay in this browser's storage. Route tracing, ICMP and Windows' TCP
+  // counters need the desktop program.
+  var WEB = location.protocol !== 'file:' && (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || /[?&]web\b/.test(location.search));
+  var DESKTOP_URL = 'https://github.com/itsmejustino/speed-test/releases/latest';
+
+  var Web = (function () {
+    var SK = 'speedtest.web.settings', HK = 'speedtest.web.history', KEEP = 50;
+    var DEF = { server: 'https://speed.cloudflare.com', directionSeconds: 15, idleSeconds: 4, warmupSeconds: 2.5, streams: 4, probeRate: 10 };
+    var emit = function () { }, run = null, seq = 0;
+
+    function rd(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
+    function wr(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+    function cl(v, lo, hi, d) { v = Number(v); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; }
+    function r3(v) { return Math.round(v * 1000) / 1000; }
+    function sanitize(s) {
+      var o = Object.assign({}, DEF, s || {});
+      o.server = DEF.server;
+      o.directionSeconds = cl(o.directionSeconds, 5, 30, DEF.directionSeconds);
+      o.idleSeconds = cl(o.idleSeconds, 2, 15, DEF.idleSeconds);
+      o.warmupSeconds = Math.min(cl(o.warmupSeconds, 0.5, 6, DEF.warmupSeconds), o.directionSeconds / 2);
+      // Browsers open at most six HTTP/1.1 connections to one site; the pings need some of them.
+      o.streams = Math.round(cl(o.streams, 1, 4, DEF.streams));
+      o.probeRate = Math.round(cl(o.probeRate, 2, 20, DEF.probeRate));
+      return { server: o.server, directionSeconds: o.directionSeconds, idleSeconds: o.idleSeconds, warmupSeconds: o.warmupSeconds, streams: o.streams, probeRate: o.probeRate };
+    }
+    function pub(s) { return Object.assign({}, s, { radarToken: '', defaults: DEF, web: true }); }
+    var cfg = sanitize(rd(SK, {}));
+    // For testing on this computer only: ?web&server=http://127.0.0.1:9000
+    var dev = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /[?&]server=([^&]+)/.exec(location.search);
+    if (dev) DEF.server = cfg.server = decodeURIComponent(dev[1]);
+
+    // Saving history: if the browser's storage is full, the oldest tests keep
+    // their numbers but drop their graphs.
+    function saveHistory(list) {
+      while (list.length > KEEP) list.shift();
+      for (var i = 0; ; i++) {
+        if (wr(HK, list)) return true;
+        if (i >= list.length - 1) return false;
+        list[i] = Object.assign({}, list[i], { samples: [], probes: [] });
+      }
+    }
+
+    // ---- Server-Timing: cfL4 (the server's own TCP view) and its processing time
+    function parseL4(hdr) {
+      var m = /cfL4;desc="\??([^"]*)"/.exec(hdr || ''); if (!m) return null;
+      var q = {}; m[1].split('&').forEach(function (kv) { var p = kv.split('='); q[p[0]] = +p[1]; });
+      if (!isFinite(q.rtt)) return null;
+      return { rtt: q.rtt / 1000, minRtt: (q.min_rtt || 0) / 1000, rttVar: (q.rtt_var || 0) / 1000, sent: q.sent || 0, retrans: q.retrans || 0 };
+    }
+    function serverMs(hdr) {
+      var t = 0, re = /(cfSpeedEdge|cfSpeedWorker);dur=([\d.]+)/g, m;
+      while ((m = re.exec(hdr || ''))) t += +m[2];
+      return t;
+    }
+    function summarizeL4(list) {
+      var st = { connections: 0, rtt: 0, minRtt: 0, rttVar: 0, sent: 0, retrans: 0, retransPct: 0 }, rtts = [], vars = [];
+      list.forEach(function (s) {
+        if (!s) return;
+        st.connections++; st.sent += s.sent; st.retrans += s.retrans; rtts.push(s.rtt); vars.push(s.rttVar);
+        if (s.minRtt > 0 && (!st.minRtt || s.minRtt < st.minRtt)) st.minRtt = s.minRtt;
+      });
+      if (!st.connections) return null;
+      st.rtt = r3(pct(rtts, 50)); st.rttVar = r3(pct(vars, 50)); st.minRtt = r3(st.minRtt);
+      if (st.sent) st.retransPct = st.retrans / st.sent * 100;
+      return st;
+    }
+    function pct(v, p) {
+      var s = v.slice().sort(function (a, b) { return a - b; }); if (!s.length) return 0;
+      var pos = p / 100 * (s.length - 1), lo = Math.floor(pos), hi = Math.ceil(pos);
+      return s[lo] + (s[hi] - s[lo]) * (pos - lo);
+    }
+    function latencyStats(probes, from, to, steadyFrom) {
+      var st = { median: 0, min: 0, p90: 0, jitter: 0, lossPct: 0, sent: 0, lost: 0 }, rtts = [];
+      probes.forEach(function (p) {
+        if (p.t < from || p.t >= to) return;
+        st.sent++;
+        if (p.rtt < 0) { st.lost++; return; }
+        if (p.t >= steadyFrom) rtts.push(p.rtt);
+      });
+      if (st.sent) st.lossPct = st.lost / st.sent * 100;
+      if (!rtts.length) return st;
+      st.median = pct(rtts, 50); st.p90 = pct(rtts, 90); st.min = Math.min.apply(null, rtts);
+      var sum = 0; for (var i = 1; i < rtts.length; i++) sum += Math.abs(rtts[i] - rtts[i - 1]);
+      if (rtts.length > 1) st.jitter = sum / (rtts.length - 1);
+      return st;
+    }
+    function haversineKm(a, b, c, d) {
+      var R = 6371, rad = Math.PI / 180, dLat = (c - a) * rad, dLon = (d - b) * rad;
+      var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a * rad) * Math.cos(c * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+    }
+    function sleep(ms, signal) {
+      return new Promise(function (res, rej) {
+        var t = setTimeout(res, ms);
+        if (signal) signal.addEventListener('abort', function () { clearTimeout(t); rej(new DOMException('Stopped', 'AbortError')); }, { once: true });
+      });
+    }
+    function fail(msg) { var e = new Error(msg); e.test = true; return e; }
+    function title(k) { return k === 'download' ? 'Download' : 'Upload'; }
+
+    // Random bytes to upload, built once: 1 MB of noise repeated.
+    var noise = null;
+    function uploadBlob(size) {
+      if (!noise) { noise = new Uint8Array(1 << 20); for (var o = 0; o < noise.length; o += 65536) crypto.getRandomValues(noise.subarray(o, o + 65536)); }
+      var parts = [], left = size;
+      while (left > 0) { var n = Math.min(left, noise.length); parts.push(n === noise.length ? noise : noise.subarray(0, n)); left -= n; }
+      return new Blob(parts, { type: 'application/octet-stream' });
+    }
+
+    function Run(c) {
+      this.cfg = c; this.ctl = new AbortController(); this.stopped = false; this.phase = 'connect';
+      this.samples = []; this.probes = []; this.phases = []; this.warnings = []; this.xhrs = [];
+    }
+    Run.prototype.t = function () { return (performance.now() - this.t0) / 1000; };
+    Run.prototype.stop = function () { this.stopped = true; this.ctl.abort(); this.xhrs.forEach(function (x) { try { x.abort(); } catch (e) { } }); };
+    Run.prototype.status = function (s) { emit({ type: 'status', text: s }); };
+    Run.prototype.setPhase = function (name, s) { this.phase = name; emit({ type: 'phase', name: name, t: this.t() }); this.status(s); };
+    Run.prototype.markPhase = function (name, start, end) { this.phases.push({ name: name, start: start, end: end }); emit({ type: 'phaseEnd', name: name, start: start, end: end }); };
+
+    Run.prototype.meta = async function () {
+      var S = this.cfg.server, sig = this.ctl.signal;
+      var s = { host: new URL(S).host, ip: '', colo: '', city: '', country: '', lat: 0, lon: 0, hasGeo: false };
+      var c = { ip: '', asn: 0, isp: '', city: '', region: '', country: '', postal: '', lat: 0, lon: 0, hasGeo: false };
+      try {
+        var m = await (await fetch(S + '/meta', { signal: sig, cache: 'no-store' })).json();
+        c.ip = m.clientIp || ''; c.asn = +m.asn || 0; c.isp = m.asOrganization || ''; c.city = m.city || ''; c.region = m.region || '';
+        c.country = m.country || ''; c.postal = m.postalCode || '';
+        if (m.latitude != null && m.longitude != null) { c.lat = +m.latitude; c.lon = +m.longitude; c.hasGeo = !(c.lat === 0 && c.lon === 0); }
+        if (m.colo && typeof m.colo === 'object') {
+          s.colo = String(m.colo.iata || '').toUpperCase();
+          if (m.colo.lat != null && m.colo.lon != null) { s.lat = +m.colo.lat; s.lon = +m.colo.lon; s.hasGeo = true; s.city = m.colo.city || ''; s.country = m.colo.cca2 || ''; }
+        } else s.colo = String(m.colo || '').toUpperCase();
+      } catch (e) {
+        if (sig.aborted) throw e;
+        this.warnings.push('The Cloudflare speed test service did not send your ISP and location, so distance is not available.');
+      }
+      if (s.colo && !s.hasGeo) {
+        try {
+          var list = await (await fetch(S + '/locations', { signal: sig })).json();
+          var hit = list.filter(function (x) { return String(x.iata).toUpperCase() === s.colo; })[0];
+          if (hit) { s.lat = +hit.lat; s.lon = +hit.lon; s.city = hit.city || ''; s.country = hit.cca2 || ''; s.hasGeo = true; }
+        } catch (e) { if (sig.aborted) throw e; }
+      }
+      return { server: s, client: c };
+    };
+
+    // One round trip: an empty download, timed by the browser from sending the
+    // request to the first byte of the answer, less the time Cloudflare says it
+    // spent on it. No answer within a second counts as lost.
+    Run.prototype.ping = async function () {
+      var url = this.cfg.server + '/__down?bytes=0&p=' + (++seq) + '-' + Math.random().toString(36).slice(2, 8);
+      var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, 1000);
+      var t0 = performance.now();
+      try {
+        var resp = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
+        await resp.arrayBuffer();
+        clearTimeout(timer);
+        var e = performance.getEntriesByName(url).pop();
+        var raw = e && e.responseStart > 0 && e.requestStart > 0 ? e.responseStart - e.requestStart : performance.now() - t0;
+        return Math.max(0.1, raw - serverMs(resp.headers.get('server-timing')));
+      } catch (err) { clearTimeout(timer); return -1; }
+    };
+
+    Run.prototype.probeLoop = function () {
+      var self = this, inflight = 0, rate = this.cfg.probeRate;
+      var timer = setInterval(function () {
+        if (inflight >= 2) return;                    // leave the browser's connections to the transfers
+        var t = self.t(), ph = self.phase; inflight++;
+        self.ping().then(function (rtt) {
+          inflight--;
+          if (self.stopped) return;
+          var p = { t: r3(t), phase: ph, rtt: rtt < 0 ? -1 : r3(rtt) };
+          self.probes.push(p); emit({ type: 'probe', p: p });
+        });
+      }, 1000 / rate);
+      return function () {
+        clearInterval(timer);
+        return new Promise(function (res) {
+          var w = setInterval(function () { if (!inflight) { clearInterval(w); res(); } }, 50);
+          setTimeout(function () { clearInterval(w); res(); }, 1500);
+        });
+      };
+    };
+
+    // One request; bytes are counted as they move. Resolves with the HTTP status.
+    Run.prototype.request = function (kind, size, ctl, onBytes, onL4) {
+      var S = this.cfg.server, self = this;
+      if (kind === 'download') {
+        return fetch(S + '/__down?bytes=' + size + '&r=' + Math.random().toString(36).slice(2), { signal: ctl.signal, cache: 'no-store' }).then(function (resp) {
+          var l4 = parseL4(resp.headers.get('server-timing')); if (l4) onL4(l4);
+          if (!resp.ok || !resp.body) return resp.status;
+          var rd = resp.body.getReader();
+          return (function pump() {
+            return rd.read().then(function (x) { if (x.done) return resp.status; onBytes(x.value.byteLength); return pump(); });
+          })();
+        });
+      }
+      return new Promise(function (res, rej) {
+        var x = new XMLHttpRequest(), sent = 0;
+        self.xhrs.push(x);
+        var done = function () { var i = self.xhrs.indexOf(x); if (i >= 0) self.xhrs.splice(i, 1); };
+        x.open('POST', S + '/__up');
+        x.upload.onprogress = function (e) { if (e.loaded > sent) { onBytes(e.loaded - sent); sent = e.loaded; } };
+        x.onload = function () { done(); if (size > sent) onBytes(size - sent); var l4 = parseL4(x.getResponseHeader('server-timing')); if (l4) onL4(l4); res(x.status); };
+        x.onerror = function () { done(); res(0); };
+        x.onabort = function () { done(); rej(new DOMException('Stopped', 'AbortError')); };
+        ctl.signal.addEventListener('abort', function () { x.abort(); }, { once: true });
+        x.send(uploadBlob(size));
+      });
+    };
+
+    Run.prototype.transfer = async function (kind) {
+      var self = this, cfg = this.cfg;
+      var sizes = kind === 'download' ? [25e6, 10e6] : [25e6, 10e6, 5e6], sizeIdx = 0;
+      this.setPhase(kind, kind === 'download' ? 'Testing download...' : 'Testing upload...');
+      var start = this.t(), began = performance.now(), dur = cfg.directionSeconds, warm = cfg.warmupSeconds;
+      var ctl = new AbortController(), failErr = null, moved = 0, requests = 0, streamsDone = 0;
+      var stopAll = function () { ctl.abort(); };
+      this.ctl.signal.addEventListener('abort', stopAll, { once: true });
+      var l4 = new Array(cfg.streams).fill(null);
+      var setFail = function (e) { if (!failErr) { failErr = e; ctl.abort(); } };
+
+      var streams = [];
+      for (var i = 0; i < cfg.streams; i++) (function (slot) {
+        streams.push((async function () {
+          var errs = 0;
+          while (!ctl.signal.aborted) {
+            var idx = sizeIdx, status = 0, err = null;
+            requests++;
+            try { status = await self.request(kind, sizes[idx], ctl, function (n) { moved += n; }, function (s) { l4[slot] = s; }); }
+            catch (e) { err = e; }
+            if (ctl.signal.aborted) break;
+            var early = performance.now() - began < 3000;
+            if (status === 429) { setFail(fail('The Cloudflare speed test service is rate-limiting this connection (HTTP 429). Wait a while, then run again.')); break; }
+            if (status >= 200 && status < 300 && !err) { errs = 0; continue; }
+            if (early && idx < sizes.length - 1 && (status === 403 || status === 413 || (status === 0 && kind === 'upload'))) { if (sizeIdx === idx) sizeIdx = idx + 1; continue; }
+            if (++errs > 4) {
+              var why = err ? (err.message || 'network error') : 'HTTP ' + status;
+              if (moved > 0) { self.warnings.push('A ' + kind + ' stream kept failing and was dropped (' + why + ').'); break; }
+              setFail(fail(title(kind) + ' failed: ' + why + '.')); break;
+            }
+            try { await sleep(250, ctl.signal); } catch (e) { break; }
+          }
+          streamsDone++;
+        })());
+      })(i);
+
+      // Every 250 ms: how many bytes have moved.
+      var pts = [{ el: 0, b: 0 }], win = [], lastMove = performance.now(), lastBytes = 0;
+      await new Promise(function (resolve) {
+        var tick = setInterval(function () {
+          if (ctl.signal.aborted) { clearInterval(tick); resolve(); return; }
+          var now = performance.now(), el = (now - began) / 1000, b = moved, prev = pts[pts.length - 1];
+          pts.push({ el: el, b: b });
+          var mbps = el > prev.el ? (b - prev.b) * 8 / 1e6 / (el - prev.el) : 0;
+          win.push(mbps); if (win.length > 4) win.shift();
+          var s = { t: r3(start + el), phase: kind, mbps: r3(mbps), avg: r3(win.reduce(function (a, v) { return a + v; }, 0) / win.length) };
+          self.samples.push(s); emit({ type: 'sample', s: s, bytes: b });
+          if (b !== lastBytes) { lastBytes = b; lastMove = now; }
+          else if (now - lastMove > 5000) {
+            if (el > warm + 2 && b > 0) { self.warnings.push(title(kind) + ' stalled before the end; the result uses what was measured until then.'); ctl.abort(); }
+            else setFail(fail(title(kind) + ' stalled: no data moved for 5 seconds. Check the connection, then run again.'));
+            clearInterval(tick); resolve(); return;
+          }
+          if (el >= dur || streamsDone === cfg.streams) { ctl.abort(); clearInterval(tick); resolve(); }
+        }, 250);
+      });
+      var end = this.t();
+      await Promise.race([Promise.all(streams), sleep(5000)]);
+      this.ctl.signal.removeEventListener('abort', stopAll);
+      this.markPhase(kind, start, end);
+      if (this.stopped) throw new DOMException('Stopped', 'AbortError');
+      if (failErr) throw failErr;
+
+      // Steady state: everything after the warm-up, read over one-second windows.
+      var first = pts[0];
+      for (var k = 0; k < pts.length; k++) if (pts[k].el >= warm) { first = pts[k]; break; }
+      var last = pts[pts.length - 1];
+      if (last.el - first.el < 1) first = pts[0];
+      if (last.el <= first.el || last.b <= first.b) throw fail(title(kind) + ' moved no data.');
+      var readings = [];
+      for (var j = 4; j < pts.length; j++) {
+        var a = pts[j - 4];
+        if (a.el >= first.el && pts[j].el > a.el) readings.push((pts[j].b - a.b) * 8 / 1e6 / (pts[j].el - a.el));
+      }
+      var st = {
+        mbps: (last.b - first.b) * 8 / 1e6 / (last.el - first.el), median: 0, p90: 0, peak: 0,
+        bytes: last.b, seconds: last.el, requests: requests, streams: cfg.streams, fileSize: sizes[sizeIdx],
+        latency: null, bloatMs: 0, server: summarizeL4(l4)
+      };
+      if (readings.length) { st.median = pct(readings, 50); st.p90 = pct(readings, 90); st.peak = Math.max.apply(null, readings); }
+      emit({ type: 'phaseResult', name: kind, stats: st });
+      return st;
+    };
+
+    Run.prototype.run = async function () {
+      var cfg = this.cfg;
+      try { performance.setResourceTimingBufferSize(20000); performance.clearResourceTimings(); } catch (e) { }
+      this.status('Reading connection details...');
+      var meta = await this.meta();
+      var res = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), when: Date.now(), config: Object.assign({}, cfg),
+        server: meta.server, client: meta.client, distanceKm: 0, fiberFloorMs: 0, probeMethod: 'HTTP round trip (browser)', web: true
+      };
+      if (meta.server.hasGeo && meta.client.hasGeo) {
+        res.distanceKm = haversineKm(meta.client.lat, meta.client.lon, meta.server.lat, meta.server.lon);
+        res.fiberFloorMs = 2 * res.distanceKm / 204190 * 1000;
+      }
+      emit({ type: 'meta', server: meta.server, client: meta.client, distanceKm: res.distanceKm, fiberFloorMs: res.fiberFloorMs, probeMethod: res.probeMethod });
+
+      this.t0 = performance.now();
+      var stopProbes = this.probeLoop();
+      try {
+        this.setPhase('idle', 'Measuring idle latency...');
+        var idleStart = this.t();
+        await sleep(cfg.idleSeconds * 1000, this.ctl.signal);
+        this.markPhase('idle', idleStart, this.t());
+        var down = await this.transfer('download');
+        var up = await this.transfer('upload');
+        this.status('Finishing...');
+        await stopProbes();
+        res.samples = this.samples; res.phases = this.phases; res.warnings = this.warnings;
+        res.probes = this.probes.slice().sort(function (a, b) { return a.t - b.t; });
+        res.phases.forEach(function (ph) {
+          if (ph.name === 'idle') res.idle = latencyStats(res.probes, ph.start, ph.end, ph.start);
+          else if (ph.name === 'download') down.latency = latencyStats(res.probes, ph.start, ph.end, ph.start + cfg.warmupSeconds);
+          else if (ph.name === 'upload') up.latency = latencyStats(res.probes, ph.start, ph.end, ph.start + cfg.warmupSeconds);
+        });
+        if (res.idle && res.idle.sent > res.idle.lost) {
+          if (down.latency.sent > down.latency.lost) down.bloatMs = down.latency.median - res.idle.median;
+          if (up.latency.sent > up.latency.lost) up.bloatMs = up.latency.median - res.idle.median;
+        }
+        res.download = down; res.upload = up;
+        res.probesSent = res.probes.length;
+        res.probesLost = res.probes.filter(function (p) { return p.rtt < 0; }).length;
+        res.lossPct = res.probesSent ? res.probesLost / res.probesSent * 100 : 0;
+        return res;
+      } finally { stopProbes(); }
+    };
+
+    async function execute(r) {
+      var c = r.cfg;
+      emit({ type: 'reset', config: pub(c), plan: { idle: c.idleSeconds, dir: c.directionSeconds, warmup: c.warmupSeconds, total: c.idleSeconds + 2 * c.directionSeconds } });
+      try {
+        var res = await r.run();
+        var list = rd(HK, []); list.push(res);
+        if (!saveHistory(list)) res.warnings.push('This browser would not save the result to its history.');
+        emit({ type: 'result', result: res });
+      } catch (e) {
+        if (r.stopped) emit({ type: 'error', kind: 'stopped', message: 'Stopped.' });
+        else emit({ type: 'error', kind: 'failed', message: e.test ? e.message : 'The test failed: ' + (e.message || e) });
+      }
+      run = null;
+      emit({ type: 'end' });
+    }
+
+    function json(v) { return Promise.resolve(JSON.parse(JSON.stringify(v))); }
+    return {
+      get: function (path) {
+        if (path === '/api/settings') return json(pub(cfg));
+        if (path === '/api/history') return json(rd(HK, []));
+        return Promise.reject(new Error('not in the web version'));
+      },
+      post: function (path, body) {
+        switch (path) {
+          case '/api/settings':
+            cfg = sanitize(body);
+            return wr(SK, cfg) ? json(pub(cfg)) : Promise.reject(new Error('this browser would not save settings'));
+          case '/api/history':
+            if (body && body.clear) wr(HK, []);
+            return json(rd(HK, []));
+          case '/api/start':
+            if (run) return Promise.reject(new Error('A test is already running.'));
+            run = new Run(cfg); execute(run); return json({ ok: true });
+          case '/api/stop':
+            if (run) run.stop(); return json({ ok: true });
+          case '/api/checktoken':
+            return json({ ok: false, message: 'Comparing with other users needs the desktop app.' });
+        }
+        return Promise.reject(new Error('not in the web version'));
+      },
+      connect: function (fn) { emit = fn; }
+    };
+  })();
+
   // ------------------------------------------------------------------ Server connection
+  function apiGet(path) {
+    if (WEB) return Web.get(path);
+    return fetch(path).then(function (r) { return r.json(); });
+  }
   function post(path, body) {
+    if (WEB) return Web.post(path, body);
     return fetch(path, { method: 'POST', headers: { 'X-Speedtest': '1', 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : '{}' })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; }); });
   }
 
   function connect() {
+    if (WEB) { Web.connect(onEvent); return; }
     var es = new EventSource('/api/events');
     es.onmessage = function (e) { try { onEvent(JSON.parse(e.data)); } catch (err) { console.error(err); } };
     es.onerror = function () { if (running) setStatus('Lost contact with the speed test program. Is its window still open?', true); };
@@ -1291,6 +1687,7 @@
       return;
     }
     var c = r.compare;
+    if (!c && WEB) { note(desktopNote('Comparing with other users needs a Cloudflare API token, which a web page can’t keep secret. ')); return; }
     if (!c) {
       var p = h('p', 'muted');
       p.textContent = settings && settings.radarToken ? 'No comparison for this test (the ISP or country was not known).' : 'Add a free Cloudflare API token in Settings to compare with other users on your ISP and in your country. ';
@@ -1468,6 +1865,7 @@
 
   function renderRoute(hops, r) {
     var box = $('route'); box.textContent = '';
+    if (!hops && WEB) { var wm = desktopNote('Route tracing sends pings with a growing time-to-live, which a browser can’t. '); wm.style.marginTop = '0.7rem'; box.appendChild(wm); return; }
     if (!hops) {
       var m = running && !r ? waiting('Traced after the speed test…') : h('p', 'muted', r ? 'No route for this test (route tracing needs Windows’ ping service).' : 'The path from you to the server, hop by hop, appears after a test.');
       m.style.marginTop = '0.7rem'; box.appendChild(m); return;
@@ -1554,7 +1952,7 @@
 
   // ------------------------------------------------------------------ History table
   function loadHistory() {
-    return fetch('/api/history').then(function (r) { return r.json(); }).then(function (list) {
+    return apiGet('/api/history').then(function (list) {
       history = Array.isArray(list) ? list : [];
       renderHistory();
     }).catch(function () { });
@@ -2383,15 +2781,33 @@
     if (location.hash === a.getAttribute('href')) { e.preventDefault(); openGuide(); }
   });
 
+  // ------------------------------------------------------------------ Web version: what changes on the page
+  function desktopNote(text) {
+    var p = h('p', 'muted', text);
+    var a = h('a', null, 'Get the desktop app'); a.href = DESKTOP_URL; a.target = '_blank'; a.rel = 'noopener';
+    p.appendChild(a); p.appendChild(document.createTextNode(' for this.'));
+    return p;
+  }
+  function webMode() {
+    document.documentElement.classList.add('web');
+    $('sStreams').max = 4; $('sRate').max = 20;
+    $('sToken').closest('.field').hidden = true;
+    $('sStreams').nextElementSibling.textContent = 'Up to 4 in a browser, which opens at most six connections to one site and needs the rest for pings.';
+    var ed = $('edition'); ed.textContent = 'web \u00b7 ';
+    var a = h('a', null, 'desktop app'); a.href = DESKTOP_URL; a.target = '_blank'; a.rel = 'noopener'; ed.appendChild(a);
+  }
+
   // ------------------------------------------------------------------ Start-up
   syncControls();
   clearReadouts();
-  fetch('/api/settings').then(function (r) { return r.json(); }).then(function (s) { settings = s; }).catch(function () { });
+  apiGet('/api/settings').then(function (s) { settings = s; }).catch(function () { });
+  if (WEB) webMode();
   renderQuality(null); renderRoute(null);
   (function () { var td = $('history').insertRow().insertCell(); td.colSpan = 7; td.className = 'empty'; td.appendChild(waiting('Loading results\u2026')); })();
   loadHistory();
   connect();
   requestAnimationFrame(frame);
+  if (WEB) setStatus('Measures from this browser. Route tracing and comparisons are in the desktop app.');
   if (location.protocol === 'file:') setStatus('Open this page by running SpeedTest.exe. Opened as a file, it cannot run a test.', true);
 })();
 </script>

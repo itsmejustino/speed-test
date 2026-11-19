@@ -11,6 +11,10 @@ A Windows speed test for network engineers. A native Go engine measures your con
 - **Distance:** how far you are from the server, and the fastest round trip physics allows.
 - **Comparison (optional):** how you rank against other people in your area, using Cloudflare Radar.
 
+## Web version
+
+**[itsmejustino.github.io/speed-test](https://itsmejustino.github.io/speed-test/)** runs the same test in your browser, with nothing to install. It measures download, upload, idle and loaded latency, jitter, and the packets Cloudflare's server had to resend. Route tracing, ICMP pings, Windows' TCP counters and the comparison with other users need the desktop app. Settings and history stay in your browser.
+
 ## Run it
 
 1. Download `SpeedTest.exe` from the [latest release](../../releases/latest).
