@@ -564,11 +564,14 @@ func (r *Run) transfer(kind string) (PhaseStats, error) {
 	dur := time.Duration(r.cfg.DirectionSeconds * float64(time.Second))
 	warm := r.cfg.WarmupSeconds
 
-	// About 2 s per download request; 1 s per upload request, so the requests
-	// cut by the edges of the confirmed-upload window are short.
+	// About 2 s per download request and 3 s per upload request. Every request
+	// costs a pause on its connection while the server answers and the next
+	// one starts (Cloudflare's servers take 50 to 300 ms), so requests need to
+	// be long enough that the pauses barely show; upload is counted only up to
+	// the last answer every connection received, so it can't be cut short.
 	target := 2.0
 	if kind == "upload" {
-		target = 1.0
+		target = 3.0
 	}
 
 	ctx, cancel := context.WithCancel(r.ctx)

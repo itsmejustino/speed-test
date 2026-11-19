@@ -1395,9 +1395,10 @@ function speedEngine(post) {
         while (!ctl.signal.aborted) {
           var idx = sizeIdx, status = 0, err = null, size = sizes[idx];
           var el = (performance.now() - began) / 1000;
-          // 2 s per download request; 1 s per upload request, so the requests cut by the
-          // edges of the confirmed-upload window are short.
-          var want = moved > 0 && el > 0.25 ? moved / el / cfg.streams * (kind === 'upload' ? 1 : 2) : 2e6;
+          // 2 s per download request, 3 s per upload request: each request costs a
+          // pause while the server answers (Cloudflare's take 50 to 300 ms), so they
+          // need to be long enough that the pauses barely show.
+          var want = moved > 0 && el > 0.25 ? moved / el / cfg.streams * (kind === 'upload' ? 3 : 2) : 2e6;
           if (kind === 'download') size = Math.round(Math.min(sizes[idx], Math.max(2e6, want)));
           else size = UP_STEPS.filter(function (v) { return v <= want && v <= sizes[idx]; }).pop() || UP_STEPS[0];
           requests++;
