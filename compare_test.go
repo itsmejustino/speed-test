@@ -9,7 +9,8 @@ func TestParseNDT7(t *testing.T) {
 	if err != nil || s.Down != 512.25 || s.Up != 41.5 || s.Ping != 11 || s.Loss != 0.3 {
 		t.Fatalf("parseNDT7 = %+v, %v", s, err)
 	}
-	nested := []byte(`{"ServerFQDN":"ndt-x","Download":{"Throughput":{"Value":901.5,"Unit":"Mbit/s"},"Latency":{"Value":7.5,"Unit":"ms"},"Retransmission":{"Value":0.2,"Unit":"%"}},"Upload":{"Throughput":{"Value":44,"Unit":"Mbit/s"}}}`)
+	// The summary ndt7-client v0.10.1 printed in CI.
+	nested := []byte(`{"ServerFQDN":"ndt-mlab1-nuq08.mlab-oti.measurement-lab.org","ServerIP":"192.0.2.1","ClientIP":"192.0.2.2","Download":{"UUID":"a","Throughput":{"Value":901.5,"Unit":"Mbit/s"},"Latency":{"Value":7.5,"Unit":"ms"},"Retransmission":{"Value":0.2,"Unit":"%"}},"Upload":{"UUID":"b","Throughput":{"Value":44,"Unit":"Mbit/s"},"Latency":{"Value":1.647,"Unit":"ms"},"Retransmission":{"Value":0,"Unit":""}}}`)
 	s, err = parseNDT7(nested)
 	if err != nil || s.Down != 901.5 || s.Up != 44 || s.Ping != 7.5 || s.Loss != 0.2 {
 		t.Fatalf("parseNDT7 nested = %+v, %v", s, err)

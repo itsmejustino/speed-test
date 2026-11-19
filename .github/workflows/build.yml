@@ -47,8 +47,6 @@ jobs:
           go install github.com/m-lab/ndt7-client-go/cmd/ndt7-client@latest
           $env:PATH = "$(go env GOPATH)\bin;$env:PATH"
           go build -o st.exe .
-          "--- one raw ndt7-client summary, for reference:"
-          ndt7-client -format json -quiet | Select-Object -Last 1
           ./st.exe -compare -rounds 3 -pause 3 -data $env:RUNNER_TEMP
 
   windows:
