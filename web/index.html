@@ -1055,6 +1055,18 @@ function speedEngine(post) {
     if (rtts.length > 1) st.jitter = sum / (rtts.length - 1);
     return st;
   }
+  // Connection setup from a Resource Timing entry; null when the server did not
+  // allow its timing to be read or the request reused an open connection.
+  function setupFrom(e) {
+    if (!e || !(e.connectEnd > e.connectStart)) return null;
+    var tlsStart = e.secureConnectionStart > 0 ? e.secureConnectionStart : e.connectEnd;
+    return {
+      dnsMs: r3(Math.max(0, e.domainLookupEnd - e.domainLookupStart)),
+      tcpMs: r3(Math.max(0, tlsStart - e.connectStart)),
+      tlsMs: r3(Math.max(0, e.connectEnd - tlsStart)),
+      protocol: e.nextHopProtocol || ''
+    };
+  }
   function haversineKm(a, b, c, d) {
     var R = 6371, rad = Math.PI / 180, dLat = (c - a) * rad, dLon = (d - b) * rad;
     var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a * rad) * Math.cos(c * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
@@ -1073,6 +1085,10 @@ function speedEngine(post) {
   }
 
   function Run(cfg) {
+    // A worker started from a blob: address has no page of its own to send as
+    // the referrer, and Cloudflare refuses /meta and downloads over about 10 MB
+    // without one, so every request names the page instead.
+    this.ref = cfg.page || 'about:client';
     this.cfg = cfg; this.ctl = new AbortController(); this.stopped = false; this.phase = 'connect';
     this.samples = []; this.probes = []; this.phases = []; this.warnings = []; this.xhrs = [];
   }
@@ -1092,7 +1108,7 @@ function speedEngine(post) {
     try {
       // A worker started from a blob: address has no page to name as the
       // referrer, and /meta answers only requests that carry one.
-      var resp = await fetch(url, { signal: sig, cache: 'no-store', referrer: this.cfg.page || 'about:client' });
+      var resp = await fetch(url, { signal: sig, cache: 'no-store', referrer: this.ref });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       var m = await resp.json();
       c.ip = m.clientIp || ''; c.asn = +m.asn || 0; c.isp = m.asOrganization || ''; c.city = m.city || ''; c.region = m.region || '';
@@ -1102,24 +1118,14 @@ function speedEngine(post) {
         s.colo = String(m.colo.iata || '').toUpperCase();
         if (m.colo.lat != null && m.colo.lon != null) { s.lat = +m.colo.lat; s.lon = +m.colo.lon; s.hasGeo = true; s.city = m.colo.city || ''; s.country = m.colo.cca2 || ''; }
       } else s.colo = String(m.colo || '').toUpperCase();
-      var e = performance.getEntriesByName(url).pop();
-      if (e && e.connectEnd > 0) {
-        var tls = e.secureConnectionStart > 0 ? e.connectEnd - e.secureConnectionStart : 0;
-        setup = {
-          dnsMs: r3(Math.max(0, e.domainLookupEnd - e.domainLookupStart)),
-          tcpMs: r3(Math.max(0, (e.secureConnectionStart > 0 ? e.secureConnectionStart : e.connectEnd) - e.connectStart)),
-          tlsMs: r3(Math.max(0, tls)),
-          protocol: e.nextHopProtocol || '',
-          reused: e.connectEnd === e.connectStart
-        };
-      }
+      setup = setupFrom(performance.getEntriesByName(url).pop());
     } catch (err) {
       if (sig.aborted) throw err;
       this.warnings.push('The Cloudflare speed test service did not send your ISP and location, so distance is not available.');
     }
     if (s.colo && !s.hasGeo) {
       try {
-        var list = await (await fetch(S + '/locations', { signal: sig })).json();
+        var list = await (await fetch(S + '/locations', { signal: sig, referrer: this.ref })).json();
         var hit = list.filter(function (x) { return String(x.iata).toUpperCase() === s.colo; })[0];
         if (hit) { s.lat = +hit.lat; s.lon = +hit.lon; s.city = hit.city || ''; s.country = hit.cca2 || ''; s.hasGeo = true; }
       } catch (err) { if (sig.aborted) throw err; }
@@ -1135,7 +1141,7 @@ function speedEngine(post) {
     var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, 1000);
     var t0 = performance.now();
     try {
-      var resp = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
+      var resp = await fetch(url, { signal: ctl.signal, cache: 'no-store', referrer: this.ref });
       await resp.arrayBuffer();
       clearTimeout(timer);
       var e = performance.getEntriesByName(url).pop();
@@ -1169,7 +1175,7 @@ function speedEngine(post) {
   Run.prototype.request = function (kind, size, ctl, onBytes, onL4) {
     var S = this.cfg.server, self = this;
     if (kind === 'download') {
-      return fetch(S + '/__down?bytes=' + size + '&r=' + Math.random().toString(36).slice(2), { signal: ctl.signal, cache: 'no-store' }).then(function (resp) {
+      return fetch(S + '/__down?bytes=' + size + '&r=' + Math.random().toString(36).slice(2), { signal: ctl.signal, cache: 'no-store', referrer: self.ref }).then(function (resp) {
         var l4 = parseL4(resp.headers.get('server-timing')); if (l4) onL4(l4);
         if (!resp.ok || !resp.body) return resp.status;
         var rd = resp.body.getReader();
@@ -1308,6 +1314,11 @@ function speedEngine(post) {
     this.status('Opening connections...');
     for (var w = 0; w < 3 && !this.stopped; w++) await Promise.all([this.ping(), this.ping()]);
     if (this.stopped) throw stopped();
+    if (!res.setup) {   // /meta's timing is not readable cross-origin: use the first ping connection
+      var opened = performance.getEntriesByType('resource').filter(function (e) { return e.name.indexOf(cfg.server + '/__down') === 0 && e.connectEnd > e.connectStart; })[0];
+      res.setup = setupFrom(opened);
+      if (res.setup) post({ type: 'meta', server: meta.server, client: meta.client, setup: res.setup, distanceKm: res.distanceKm, fiberFloorMs: res.fiberFloorMs, probeMethod: res.probeMethod });
+    }
 
     this.t0 = performance.now();
     var stopProbes = this.probeLoop();
