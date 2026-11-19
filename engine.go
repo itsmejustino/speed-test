@@ -130,6 +130,8 @@ type Result struct {
 	ProbesSent   int          `json:"probesSent"`
 	ProbesLost   int          `json:"probesLost"`
 	TCP          *TCPStats    `json:"tcp,omitempty"`
+	Setup        *Setup       `json:"setup,omitempty"`
+	Adapter      *Adapter     `json:"adapter,omitempty"`
 	Route        []Hop        `json:"route,omitempty"`
 	Compare      *Compare     `json:"compare,omitempty"`
 	Phases       []PhaseMark  `json:"phases"`
@@ -231,7 +233,9 @@ func (r *Run) run() (*Result, error) {
 	// One address for everything: every stream and every ping goes to the same
 	// server, and that is the address reported.
 	r.status("Finding the server...")
+	dnsStart := time.Now()
 	ip, err := resolve(r.ctx, r.host)
+	dnsTook := time.Since(dnsStart)
 	if err != nil {
 		return nil, &testError{"Could not look up " + r.host + ": " + err.Error()}
 	}
@@ -246,11 +250,21 @@ func (r *Run) run() (*Result, error) {
 	}
 
 	r.status("Reading connection details...")
-	server, client := r.fetchMeta()
+	adapterCh := make(chan *Adapter, 1)
+	go func() { adapterCh <- currentAdapter(ip) }()
+	server, client, setup := r.fetchMeta()
+	if setup != nil && net.ParseIP(r.host) == nil {
+		setup.DNSMs = ms(dnsTook)
+	}
 	server.Host = r.host
 	server.IP = ip.String()
 	res := &Result{ID: strconv.FormatInt(time.Now().UnixNano(), 36), When: time.Now().UnixMilli(), Config: r.cfg, Server: server, Client: client}
 	res.Config.RadarToken = ""
+	res.Setup = setup
+	select {
+	case res.Adapter = <-adapterCh:
+	case <-time.After(2 * time.Second):
+	}
 	if server.HasGeo && client.HasGeo {
 		res.DistanceKm = haversineKm(client.Lat, client.Lon, server.Lat, server.Lon)
 		res.FiberFloorMs = fiberFloorMs(res.DistanceKm)
@@ -259,7 +273,7 @@ func (r *Run) run() (*Result, error) {
 	method, pinger := r.choosePinger()
 	res.ProbeMethod = method
 	r.emit("meta", "server", server, "client", client, "distanceKm", res.DistanceKm,
-		"fiberFloorMs", res.FiberFloorMs, "probeMethod", method)
+		"fiberFloorMs", res.FiberFloorMs, "probeMethod", method, "setup", res.Setup, "adapter", res.Adapter)
 
 	tcpBefore, tcpErr := readTCPCountersQuick()
 

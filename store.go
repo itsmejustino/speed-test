@@ -200,11 +200,15 @@ type eventHub struct {
 	mu     sync.Mutex
 	subs   map[chan []byte]struct{}
 	replay [][]byte
+	hook   func(map[string]any) // command-line mode: progress to the console
 }
 
 func newHub() *eventHub { return &eventHub{subs: map[chan []byte]struct{}{}} }
 
 func (h *eventHub) publish(ev map[string]any) {
+	if h.hook != nil {
+		h.hook(ev)
+	}
 	b, err := json.Marshal(ev)
 	if err != nil {
 		return

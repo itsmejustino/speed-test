@@ -20,8 +20,29 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
 
+  # The Windows-only code (ICMP, route tracing, adapter details, TCP counters)
+  # on a real Windows machine, then one short test against Cloudflare.
+  windows-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -v ./...
+      - name: Live test with the command-line mode
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          go build -o st.exe .
+          ./st.exe -run -seconds 5 -data $env:RUNNER_TEMP
+          ./st.exe -run -json -seconds 5 -data $env:RUNNER_TEMP | Out-File result.json
+          $r = Get-Content result.json | ConvertFrom-Json
+          "probe method: $($r.probeMethod); hops: $($r.route.Count); adapter: $($r.adapter.kind) $($r.adapter.linkDownMbps) Mbps; local TCP: $($r.tcp.ratePct)"
+
   windows:
-    needs: test
+    needs: [test, windows-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

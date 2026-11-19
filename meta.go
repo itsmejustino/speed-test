@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"strconv"
 	"strings"
 	"time"
@@ -15,13 +17,39 @@ import (
 // code of the data centre ("colo") that answered. /locations lists where each
 // data centre is.
 
-func (r *Run) fetchMeta() (ServerInfo, ClientInfo) {
+func (r *Run) fetchMeta() (ServerInfo, ClientInfo, *Setup) {
 	var s ServerInfo
 	var c ClientInfo
 	cl := &http.Client{Transport: r.transport(), Timeout: 10 * time.Second}
 	defer cl.Transport.(*http.Transport).CloseIdleConnections()
 
-	if m, err := getJSONMap(r.ctx, cl, r.cfg.Server+"/meta", r.cfg.Server); err == nil {
+	// The first request opens the first connection: time each step of it.
+	setup := &Setup{Protocol: "HTTP/1.1"}
+	var connStart, tlsStart, wrote time.Time
+	trace := &httptrace.ClientTrace{
+		ConnectStart: func(string, string) { connStart = time.Now() },
+		ConnectDone: func(_, _ string, err error) {
+			if err == nil && !connStart.IsZero() {
+				setup.TCPMs = ms(time.Since(connStart))
+			}
+		},
+		TLSHandshakeStart: func() { tlsStart = time.Now() },
+		TLSHandshakeDone: func(cs tls.ConnectionState, err error) {
+			if err == nil && !tlsStart.IsZero() {
+				setup.TLSMs = ms(time.Since(tlsStart))
+				setup.TLSVersion = tls.VersionName(cs.Version)
+			}
+		},
+		WroteRequest: func(httptrace.WroteRequestInfo) { wrote = time.Now() },
+		GotFirstResponseByte: func() {
+			if !wrote.IsZero() {
+				setup.TTFBMs = ms(time.Since(wrote))
+			}
+		},
+	}
+	metaCtx := httptrace.WithClientTrace(r.ctx, trace)
+
+	if m, err := getJSONMap(metaCtx, cl, r.cfg.Server+"/meta", r.cfg.Server); err == nil {
 		c.IP = str(m["clientIp"])
 		c.ASN = int(num(m["asn"]))
 		c.ISP = str(m["asOrganization"])
@@ -108,7 +136,10 @@ func (r *Run) fetchMeta() (ServerInfo, ClientInfo) {
 			}
 		}
 	}
-	return s, c
+	if setup.TCPMs == 0 {
+		setup = nil
+	}
+	return s, c, setup
 }
 
 func getJSONMap(ctx context.Context, c *http.Client, url, site string) (map[string]any, error) {

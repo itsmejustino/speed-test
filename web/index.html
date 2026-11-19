@@ -203,6 +203,16 @@
 
   /* Connection */
   .conn { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 1.5rem; margin-top: 0.8rem; }
+  .conn.four { grid-template-columns: 1fr 1fr 1fr 1.2fr; }
+  .findings { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: 0.45rem; }
+  .findings li { display: grid; grid-template-columns: 1.2rem 1fr; gap: 0.5rem; align-items: baseline; font-size: 0.93rem; line-height: 1.5; padding: 0.5rem 0.75rem; border-radius: 8px; background: var(--sunk); border: 1px solid var(--edge); }
+  .findings li::before { content: ''; width: 0.6rem; height: 0.6rem; border-radius: 50%; justify-self: center; transform: translateY(-0.05rem); background: var(--dim); }
+  .findings li.warn::before { background: var(--loss); }
+  .findings li.note::before { background: var(--lat); }
+  .findings li.ok::before { background: var(--up); }
+  .findings b { color: var(--bright); font-weight: normal; }
+  :root[data-theme="robot"] .findings li { background: rgba(17, 24, 39, 0.55); border-color: #334155; }
+  #copyReport[hidden] { display: none; }
   .conn h3 { font-size: 1.05rem; color: var(--bright); margin-bottom: 0.35rem; }
   .facts { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 1rem; font-size: 0.95rem; }
   .facts dt { color: var(--dim); }
@@ -617,7 +627,7 @@
 
   @media (max-width: 980px) {
     .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .conn, .cmp-ranks, .qual { grid-template-columns: 1fr; }
+    .conn, .conn.four, .cmp-ranks, .qual { grid-template-columns: 1fr; }
     table.route .barcell { display: none; }
     .cmp-table .verdict { display: none; }
     .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -663,6 +673,7 @@
 <main>
   <div class="prompt-row">
     <p id="status" role="status">Ready.</p>
+    <button class="btn" id="copyReport" type="button" hidden title="Copy a plain-text summary of this test, for a ticket or a chat">Copy report</button>
     <button class="btn" id="settingsBtn" type="button">Settings</button>
     <button id="start" type="button">Start test</button>
   </div>
@@ -981,6 +992,368 @@
   </form>
 </dialog>
 
+<script type="text/plain" id="engineSrc">
+// Speed Test web engine. Runs in a Web Worker so that drawing the page never
+// delays a measurement; falls back to the page itself if workers are blocked.
+// Talks only in events, the same ones SpeedTest.exe streams to the page.
+function speedEngine(post) {
+  'use strict';
+  var run = null, seq = 0;
+
+  function r3(v) { return Math.round(v * 1000) / 1000; }
+  function pct(v, p) {
+    var s = v.slice().sort(function (a, b) { return a - b; }); if (!s.length) return 0;
+    var pos = p / 100 * (s.length - 1), lo = Math.floor(pos), hi = Math.ceil(pos);
+    return s[lo] + (s[hi] - s[lo]) * (pos - lo);
+  }
+  function sleep(ms, signal) {
+    return new Promise(function (res, rej) {
+      var t = setTimeout(res, ms);
+      if (signal) signal.addEventListener('abort', function () { clearTimeout(t); rej(new DOMException('Stopped', 'AbortError')); }, { once: true });
+    });
+  }
+  function fail(msg) { var e = new Error(msg); e.test = true; return e; }
+  function title(k) { return k === 'download' ? 'Download' : 'Upload'; }
+  function stopped() { return new DOMException('Stopped', 'AbortError'); }
+
+  // ---- Cloudflare's Server-Timing header: its TCP view (cfL4) and its own processing time
+  function parseL4(hdr) {
+    var m = /cfL4;desc="\??([^"]*)"/.exec(hdr || ''); if (!m) return null;
+    var q = {}; m[1].split('&').forEach(function (kv) { var p = kv.split('='); q[p[0]] = +p[1]; });
+    if (!isFinite(q.rtt)) return null;
+    return { rtt: q.rtt / 1000, minRtt: (q.min_rtt || 0) / 1000, rttVar: (q.rtt_var || 0) / 1000, sent: q.sent || 0, retrans: q.retrans || 0 };
+  }
+  function serverMs(hdr) {
+    var t = 0, re = /(cfSpeedEdge|cfSpeedWorker);dur=([\d.]+)/g, m;
+    while ((m = re.exec(hdr || ''))) t += +m[2];
+    return t;
+  }
+  function summarizeL4(list) {
+    var st = { connections: 0, rtt: 0, minRtt: 0, rttVar: 0, sent: 0, retrans: 0, retransPct: 0 }, rtts = [], vars = [];
+    list.forEach(function (s) {
+      if (!s) return;
+      st.connections++; st.sent += s.sent; st.retrans += s.retrans; rtts.push(s.rtt); vars.push(s.rttVar);
+      if (s.minRtt > 0 && (!st.minRtt || s.minRtt < st.minRtt)) st.minRtt = s.minRtt;
+    });
+    if (!st.connections) return null;
+    st.rtt = r3(pct(rtts, 50)); st.rttVar = r3(pct(vars, 50)); st.minRtt = r3(st.minRtt);
+    if (st.sent) st.retransPct = st.retrans / st.sent * 100;
+    return st;
+  }
+  function latencyStats(probes, from, to, steadyFrom) {
+    var st = { median: 0, min: 0, p90: 0, jitter: 0, lossPct: 0, sent: 0, lost: 0 }, rtts = [];
+    probes.forEach(function (p) {
+      if (p.t < from || p.t >= to) return;
+      st.sent++;
+      if (p.rtt < 0) { st.lost++; return; }
+      if (p.t >= steadyFrom) rtts.push(p.rtt);
+    });
+    if (st.sent) st.lossPct = st.lost / st.sent * 100;
+    if (!rtts.length) return st;
+    st.median = pct(rtts, 50); st.p90 = pct(rtts, 90); st.min = Math.min.apply(null, rtts);
+    var sum = 0; for (var i = 1; i < rtts.length; i++) sum += Math.abs(rtts[i] - rtts[i - 1]);
+    if (rtts.length > 1) st.jitter = sum / (rtts.length - 1);
+    return st;
+  }
+  function haversineKm(a, b, c, d) {
+    var R = 6371, rad = Math.PI / 180, dLat = (c - a) * rad, dLon = (d - b) * rad;
+    var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a * rad) * Math.cos(c * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+  }
+
+  // Upload data: 1 MB of random bytes, and one Blob per size built from it once.
+  // Blobs are immutable, so every request can send the same one without copying.
+  var noise = null, blobs = {};
+  function uploadBlob(size) {
+    if (blobs[size]) return blobs[size];
+    if (!noise) { noise = new Uint8Array(1 << 20); for (var o = 0; o < noise.length; o += 65536) crypto.getRandomValues(noise.subarray(o, o + 65536)); }
+    var parts = [], left = size;
+    while (left > 0) { var n = Math.min(left, noise.length); parts.push(n === noise.length ? noise : noise.subarray(0, n)); left -= n; }
+    return (blobs[size] = new Blob(parts, { type: 'application/octet-stream' }));
+  }
+
+  function Run(cfg) {
+    this.cfg = cfg; this.ctl = new AbortController(); this.stopped = false; this.phase = 'connect';
+    this.samples = []; this.probes = []; this.phases = []; this.warnings = []; this.xhrs = [];
+  }
+  Run.prototype.t = function () { return (performance.now() - this.t0) / 1000; };
+  Run.prototype.stop = function () { this.stopped = true; this.ctl.abort(); this.xhrs.slice().forEach(function (x) { try { x.abort(); } catch (e) { } }); };
+  Run.prototype.status = function (s) { post({ type: 'status', text: s }); };
+  Run.prototype.setPhase = function (name, s) { this.phase = name; post({ type: 'phase', name: name, t: this.t() }); this.status(s); };
+  Run.prototype.markPhase = function (name, start, end) { this.phases.push({ name: name, start: start, end: end }); post({ type: 'phaseEnd', name: name, start: start, end: end }); };
+
+  // Who and where: Cloudflare's /meta. Its Resource Timing entry also shows how
+  // long the first connection took to set up: DNS, TCP and TLS.
+  Run.prototype.meta = async function () {
+    var S = this.cfg.server, sig = this.ctl.signal, url = S + '/meta?m=' + Date.now();
+    var s = { host: new URL(S).host, ip: '', colo: '', city: '', country: '', lat: 0, lon: 0, hasGeo: false };
+    var c = { ip: '', asn: 0, isp: '', city: '', region: '', country: '', postal: '', lat: 0, lon: 0, hasGeo: false };
+    var setup = null;
+    try {
+      // A worker started from a blob: address has no page to name as the
+      // referrer, and /meta answers only requests that carry one.
+      var resp = await fetch(url, { signal: sig, cache: 'no-store', referrer: this.cfg.page || 'about:client' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      var m = await resp.json();
+      c.ip = m.clientIp || ''; c.asn = +m.asn || 0; c.isp = m.asOrganization || ''; c.city = m.city || ''; c.region = m.region || '';
+      c.country = m.country || ''; c.postal = m.postalCode || '';
+      if (m.latitude != null && m.longitude != null) { c.lat = +m.latitude; c.lon = +m.longitude; c.hasGeo = !(c.lat === 0 && c.lon === 0); }
+      if (m.colo && typeof m.colo === 'object') {
+        s.colo = String(m.colo.iata || '').toUpperCase();
+        if (m.colo.lat != null && m.colo.lon != null) { s.lat = +m.colo.lat; s.lon = +m.colo.lon; s.hasGeo = true; s.city = m.colo.city || ''; s.country = m.colo.cca2 || ''; }
+      } else s.colo = String(m.colo || '').toUpperCase();
+      var e = performance.getEntriesByName(url).pop();
+      if (e && e.connectEnd > 0) {
+        var tls = e.secureConnectionStart > 0 ? e.connectEnd - e.secureConnectionStart : 0;
+        setup = {
+          dnsMs: r3(Math.max(0, e.domainLookupEnd - e.domainLookupStart)),
+          tcpMs: r3(Math.max(0, (e.secureConnectionStart > 0 ? e.secureConnectionStart : e.connectEnd) - e.connectStart)),
+          tlsMs: r3(Math.max(0, tls)),
+          protocol: e.nextHopProtocol || '',
+          reused: e.connectEnd === e.connectStart
+        };
+      }
+    } catch (err) {
+      if (sig.aborted) throw err;
+      this.warnings.push('The Cloudflare speed test service did not send your ISP and location, so distance is not available.');
+    }
+    if (s.colo && !s.hasGeo) {
+      try {
+        var list = await (await fetch(S + '/locations', { signal: sig })).json();
+        var hit = list.filter(function (x) { return String(x.iata).toUpperCase() === s.colo; })[0];
+        if (hit) { s.lat = +hit.lat; s.lon = +hit.lon; s.city = hit.city || ''; s.country = hit.cca2 || ''; s.hasGeo = true; }
+      } catch (err) { if (sig.aborted) throw err; }
+    }
+    return { server: s, client: c, setup: setup };
+  };
+
+  // One round trip: an empty download, timed by the browser from sending the
+  // request to the first byte of the answer, less the time Cloudflare says it
+  // spent on it. No answer within a second counts as lost.
+  Run.prototype.ping = async function () {
+    var url = this.cfg.server + '/__down?bytes=0&p=' + (++seq) + '-' + Math.random().toString(36).slice(2, 8);
+    var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, 1000);
+    var t0 = performance.now();
+    try {
+      var resp = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
+      await resp.arrayBuffer();
+      clearTimeout(timer);
+      var e = performance.getEntriesByName(url).pop();
+      var raw = e && e.responseStart > 0 && e.requestStart > 0 ? e.responseStart - e.requestStart : performance.now() - t0;
+      return Math.max(0.1, raw - serverMs(resp.headers.get('server-timing')));
+    } catch (err) { clearTimeout(timer); return -1; }
+  };
+
+  Run.prototype.probeLoop = function () {
+    var self = this, inflight = 0;
+    var timer = setInterval(function () {
+      if (inflight >= 2) return;                    // leave the browser's connections to the transfers
+      var t = self.t(), ph = self.phase; inflight++;
+      self.ping().then(function (rtt) {
+        inflight--;
+        if (self.stopped) return;
+        var p = { t: r3(t), phase: ph, rtt: rtt < 0 ? -1 : r3(rtt) };
+        self.probes.push(p); post({ type: 'probe', p: p });
+      });
+    }, 1000 / this.cfg.probeRate);
+    return function () {
+      clearInterval(timer);
+      return new Promise(function (res) {
+        var w = setInterval(function () { if (!inflight) { clearInterval(w); res(); } }, 50);
+        setTimeout(function () { clearInterval(w); res(); }, 1500);
+      });
+    };
+  };
+
+  // One request; bytes are counted as they move. Resolves with the HTTP status.
+  Run.prototype.request = function (kind, size, ctl, onBytes, onL4) {
+    var S = this.cfg.server, self = this;
+    if (kind === 'download') {
+      return fetch(S + '/__down?bytes=' + size + '&r=' + Math.random().toString(36).slice(2), { signal: ctl.signal, cache: 'no-store' }).then(function (resp) {
+        var l4 = parseL4(resp.headers.get('server-timing')); if (l4) onL4(l4);
+        if (!resp.ok || !resp.body) return resp.status;
+        var rd = resp.body.getReader();
+        return (function pump() {
+          return rd.read().then(function (x) { if (x.done) return resp.status; onBytes(x.value.byteLength); return pump(); });
+        })();
+      });
+    }
+    return new Promise(function (res, rej) {
+      var x = new XMLHttpRequest(), sent = 0;
+      self.xhrs.push(x);
+      var done = function () { var i = self.xhrs.indexOf(x); if (i >= 0) self.xhrs.splice(i, 1); };
+      x.open('POST', S + '/__up');
+      x.upload.onprogress = function (e) { if (e.loaded > sent) { onBytes(e.loaded - sent); sent = e.loaded; } };
+      x.onload = function () { done(); if (size > sent) onBytes(size - sent); var l4 = parseL4(x.getResponseHeader('server-timing')); if (l4) onL4(l4); res(x.status); };
+      x.onerror = function () { done(); res(0); };
+      x.onabort = function () { done(); rej(stopped()); };
+      ctl.signal.addEventListener('abort', function () { x.abort(); }, { once: true });
+      x.send(uploadBlob(size));
+    });
+  };
+
+  Run.prototype.transfer = async function (kind) {
+    var self = this, cfg = this.cfg;
+    var sizes = kind === 'download' ? [25e6, 10e6] : [25e6, 10e6, 5e6], sizeIdx = 0;
+    if (kind === 'upload') uploadBlob(sizes[0]);   // built before the clock starts
+    this.setPhase(kind, kind === 'download' ? 'Testing download...' : 'Testing upload...');
+    var start = this.t(), began = performance.now(), dur = cfg.directionSeconds, warm = cfg.warmupSeconds;
+    var ctl = new AbortController(), failErr = null, moved = 0, requests = 0, streamsDone = 0;
+    var stopAll = function () { ctl.abort(); };
+    this.ctl.signal.addEventListener('abort', stopAll, { once: true });
+    var l4 = new Array(cfg.streams).fill(null);
+    var setFail = function (e) { if (!failErr) { failErr = e; ctl.abort(); } };
+
+    var streams = [];
+    for (var i = 0; i < cfg.streams; i++) (function (slot) {
+      streams.push((async function () {
+        var errs = 0;
+        while (!ctl.signal.aborted) {
+          var idx = sizeIdx, status = 0, err = null;
+          requests++;
+          try { status = await self.request(kind, sizes[idx], ctl, function (n) { moved += n; }, function (s) { l4[slot] = s; }); }
+          catch (e) { err = e; }
+          if (ctl.signal.aborted) break;
+          var early = performance.now() - began < 3000;
+          if (status === 429) { setFail(fail('The Cloudflare speed test service is rate-limiting this connection (HTTP 429). Wait a while, then run again.')); break; }
+          if (status >= 200 && status < 300 && !err) { errs = 0; continue; }
+          if (early && idx < sizes.length - 1 && (status === 403 || status === 413 || (status === 0 && kind === 'upload'))) { if (sizeIdx === idx) sizeIdx = idx + 1; continue; }
+          if (++errs > 4) {
+            var why = err ? (err.message || 'network error') : 'HTTP ' + status;
+            if (moved > 0) { self.warnings.push('A ' + kind + ' stream kept failing and was dropped (' + why + ').'); break; }
+            setFail(fail(title(kind) + ' failed: ' + why + '.')); break;
+          }
+          try { await sleep(250, ctl.signal); } catch (e) { break; }
+        }
+        streamsDone++;
+      })());
+    })(i);
+
+    // Every 250 ms: how many bytes have moved.
+    var pts = [{ el: 0, b: 0 }], win = [], lastMove = performance.now(), lastBytes = 0;
+    await new Promise(function (resolve) {
+      var tick = setInterval(function () {
+        if (ctl.signal.aborted) { clearInterval(tick); resolve(); return; }
+        var now = performance.now(), el = (now - began) / 1000, b = moved, prev = pts[pts.length - 1];
+        pts.push({ el: el, b: b });
+        var mbps = el > prev.el ? (b - prev.b) * 8 / 1e6 / (el - prev.el) : 0;
+        win.push(mbps); if (win.length > 4) win.shift();
+        var s = { t: r3(start + el), phase: kind, mbps: r3(mbps), avg: r3(win.reduce(function (a, v) { return a + v; }, 0) / win.length) };
+        self.samples.push(s); post({ type: 'sample', s: s, bytes: b });
+        if (b !== lastBytes) { lastBytes = b; lastMove = now; }
+        else if (now - lastMove > 5000) {
+          if (el > warm + 2 && b > 0) { self.warnings.push(title(kind) + ' stalled before the end; the result uses what was measured until then.'); ctl.abort(); }
+          else setFail(fail(title(kind) + ' stalled: no data moved for 5 seconds. Check the connection, then run again.'));
+          clearInterval(tick); resolve(); return;
+        }
+        if (el >= dur || streamsDone === cfg.streams) { ctl.abort(); clearInterval(tick); resolve(); }
+      }, 250);
+    });
+    var end = this.t();
+    await Promise.race([Promise.all(streams), sleep(5000)]);
+    this.ctl.signal.removeEventListener('abort', stopAll);
+    this.markPhase(kind, start, end);
+    if (this.stopped) throw stopped();
+    if (failErr) throw failErr;
+
+    // Steady state: everything after the warm-up, read over one-second windows.
+    var first = pts[0];
+    for (var k = 0; k < pts.length; k++) if (pts[k].el >= warm) { first = pts[k]; break; }
+    var last = pts[pts.length - 1];
+    if (last.el - first.el < 1) first = pts[0];
+    if (last.el <= first.el || last.b <= first.b) throw fail(title(kind) + ' moved no data.');
+    var readings = [];
+    for (var j = 4; j < pts.length; j++) {
+      var a = pts[j - 4];
+      if (a.el >= first.el && pts[j].el > a.el) readings.push((pts[j].b - a.b) * 8 / 1e6 / (pts[j].el - a.el));
+    }
+    var st = {
+      mbps: (last.b - first.b) * 8 / 1e6 / (last.el - first.el), median: 0, p90: 0, peak: 0,
+      bytes: last.b, seconds: last.el, requests: requests, streams: cfg.streams, fileSize: sizes[sizeIdx],
+      latency: null, bloatMs: 0, server: summarizeL4(l4)
+    };
+    if (readings.length) { st.median = pct(readings, 50); st.p90 = pct(readings, 90); st.peak = Math.max.apply(null, readings); }
+    post({ type: 'phaseResult', name: kind, stats: st });
+    return st;
+  };
+
+  Run.prototype.run = async function () {
+    var cfg = this.cfg;
+    try { performance.setResourceTimingBufferSize(20000); performance.clearResourceTimings(); } catch (e) { }
+    this.status('Reading connection details...');
+    var meta = await this.meta();
+    var res = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), when: Date.now(), config: Object.assign({}, cfg, { page: undefined }),
+      server: meta.server, client: meta.client, setup: meta.setup, distanceKm: 0, fiberFloorMs: 0,
+      probeMethod: 'HTTP round trip (browser)', web: true, userAgent: navigator.userAgent
+    };
+    if (meta.server.hasGeo && meta.client.hasGeo) {
+      res.distanceKm = haversineKm(meta.client.lat, meta.client.lon, meta.server.lat, meta.server.lon);
+      res.fiberFloorMs = 2 * res.distanceKm / 204190 * 1000;
+    }
+    post({ type: 'meta', server: meta.server, client: meta.client, setup: meta.setup, distanceKm: res.distanceKm, fiberFloorMs: res.fiberFloorMs, probeMethod: res.probeMethod });
+
+    // Open the two connections the pings use, so setting them up (DNS, TCP,
+    // TLS) is not counted as delay or loss. Not recorded.
+    this.status('Opening connections...');
+    for (var w = 0; w < 3 && !this.stopped; w++) await Promise.all([this.ping(), this.ping()]);
+    if (this.stopped) throw stopped();
+
+    this.t0 = performance.now();
+    var stopProbes = this.probeLoop();
+    try {
+      this.setPhase('idle', 'Measuring idle latency...');
+      var idleStart = this.t();
+      await sleep(cfg.idleSeconds * 1000, this.ctl.signal);
+      this.markPhase('idle', idleStart, this.t());
+      var down = await this.transfer('download');
+      var up = await this.transfer('upload');
+      this.status('Finishing...');
+      await stopProbes();
+      res.samples = this.samples; res.phases = this.phases; res.warnings = this.warnings;
+      res.probes = this.probes.slice().sort(function (a, b) { return a.t - b.t; });
+      res.phases.forEach(function (ph) {
+        if (ph.name === 'idle') res.idle = latencyStats(res.probes, ph.start, ph.end, ph.start);
+        else if (ph.name === 'download') down.latency = latencyStats(res.probes, ph.start, ph.end, ph.start + cfg.warmupSeconds);
+        else if (ph.name === 'upload') up.latency = latencyStats(res.probes, ph.start, ph.end, ph.start + cfg.warmupSeconds);
+      });
+      if (res.idle && res.idle.sent > res.idle.lost) {
+        if (down.latency.sent > down.latency.lost) down.bloatMs = down.latency.median - res.idle.median;
+        if (up.latency.sent > up.latency.lost) up.bloatMs = up.latency.median - res.idle.median;
+      }
+      res.download = down; res.upload = up;
+      res.probesSent = res.probes.length;
+      res.probesLost = res.probes.filter(function (p) { return p.rtt < 0; }).length;
+      res.lossPct = res.probesSent ? res.probesLost / res.probesSent * 100 : 0;
+      return res;
+    } finally { stopProbes(); }
+  };
+
+  async function execute(r) {
+    var c = r.cfg;
+    post({ type: 'reset', plan: { idle: c.idleSeconds, dir: c.directionSeconds, warmup: c.warmupSeconds, total: c.idleSeconds + 2 * c.directionSeconds } });
+    try {
+      var res = await r.run();
+      post({ type: 'result', result: res });
+    } catch (e) {
+      if (r.stopped) post({ type: 'error', kind: 'stopped', message: 'Stopped.' });
+      else post({ type: 'error', kind: 'failed', message: e.test ? e.message : 'The test failed: ' + (e.message || e) });
+    }
+    run = null;
+    post({ type: 'end' });
+  }
+
+  return {
+    start: function (cfg) { if (run) return false; run = new Run(cfg); execute(run); return true; },
+    stop: function () { if (run) run.stop(); }
+  };
+}
+
+if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
+  var engine = speedEngine(function (m) { self.postMessage(m); });
+  self.onmessage = function (e) { if (e.data.cmd === 'start') engine.start(e.data.cfg); else if (e.data.cmd === 'stop') engine.stop(); };
+}
+</script>
 <script>
 (function () {
   'use strict';
@@ -1013,6 +1386,27 @@
   function meanStep(a) { if (a.length < 2) return null; var s = 0; for (var i = 1; i < a.length; i++) s += Math.abs(a[i] - a[i - 1]); return s / (a.length - 1); }
   function h(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function place(c) { return [c.city, c.region, c.country].filter(Boolean).join(', '); }
+  function setupText(st) {
+    if (!st) return '';
+    if (st.reused) return 'connection already open';
+    return 'DNS ' + fmtMs(st.dnsMs) + ' · TCP ' + fmtMs(st.tcpMs) + (st.tlsMs ? ' · TLS ' + fmtMs(st.tlsMs) : '') + ' ms';
+  }
+  function linkText(a) {
+    if (!a || !a.linkDownMbps) return '';
+    var d = fmtLink(a.linkDownMbps), u = fmtLink(a.linkUpMbps || a.linkDownMbps);
+    return d === u ? d : d + ' down / ' + u + ' up';
+  }
+  function fmtLink(v) { return v >= 1000 ? +(v / 1000).toFixed(1) + ' Gbps' : Math.round(v) + ' Mbps'; }
+  function adapterRows(a) {
+    return [
+      ['Adapter', a.kind + (a.name ? ' · ' + a.name : '')],
+      ['Link', linkText(a)],
+      ['Local IP', a.localIp],
+      ['Gateway', (a.gateways || []).join(', ')],
+      ['DNS', (a.dns || []).join(', ')],
+      ['MTU', a.mtu ? String(a.mtu) : '']
+    ];
+  }
   function facts(rows) {
     var dl = h('dl', 'facts');
     rows.forEach(function (r) { if (r[1] == null || r[1] === '') return; dl.appendChild(h('dt', null, r[0])); dl.appendChild(h('dd', null, r[1])); });
@@ -1058,45 +1452,41 @@
       id: r.id,
       plan: { idle: r.config.idleSeconds, dir: r.config.directionSeconds, total: end || (r.config.idleSeconds + 2 * r.config.directionSeconds), warmup: r.config.warmupSeconds },
       config: r.config, phases: phases, samples: r.samples || [], probes: r.probes || [], result: r, lastT: end,
-      meta: { server: r.server, client: r.client, distanceKm: r.distanceKm, fiberFloorMs: r.fiberFloorMs, probeMethod: r.probeMethod }
+      meta: { server: r.server, client: r.client, distanceKm: r.distanceKm, fiberFloorMs: r.fiberFloorMs, probeMethod: r.probeMethod, setup: r.setup, adapter: r.adapter }
     };
   }
 
   // ------------------------------------------------------------------ Web version
   // Served from anywhere but this computer's own program, the page measures from
-  // the browser itself: transfers with fetch and XMLHttpRequest, latency from
-  // small requests timed by the browser's Resource Timing, minus the time
-  // Cloudflare's server reports it spent (Server-Timing). Settings and history
-  // stay in this browser's storage. Route tracing, ICMP and Windows' TCP
-  // counters need the desktop program.
+  // the browser itself, with the engine in the <script id="engineSrc"> block run
+  // as a Web Worker. Settings and history stay in this browser's storage. Route
+  // tracing, ICMP, adapter details and Windows' TCP counters need the desktop app.
   var WEB = location.protocol !== 'file:' && (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || /[?&]web\b/.test(location.search));
   var DESKTOP_URL = 'https://github.com/itsmejustino/speed-test/releases/latest';
 
   var Web = (function () {
     var SK = 'speedtest.web.settings', HK = 'speedtest.web.history', KEEP = 50;
     var DEF = { server: 'https://speed.cloudflare.com', directionSeconds: 15, idleSeconds: 4, warmupSeconds: 2.5, streams: 4, probeRate: 10 };
-    var emit = function () { }, run = null, seq = 0;
+    var emit = function () { }, running = false, engine = null;
 
     function rd(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
     function wr(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
     function cl(v, lo, hi, d) { v = Number(v); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; }
-    function r3(v) { return Math.round(v * 1000) / 1000; }
     function sanitize(s) {
       var o = Object.assign({}, DEF, s || {});
-      o.server = DEF.server;
       o.directionSeconds = cl(o.directionSeconds, 5, 30, DEF.directionSeconds);
       o.idleSeconds = cl(o.idleSeconds, 2, 15, DEF.idleSeconds);
       o.warmupSeconds = Math.min(cl(o.warmupSeconds, 0.5, 6, DEF.warmupSeconds), o.directionSeconds / 2);
       // Browsers open at most six HTTP/1.1 connections to one site; the pings need some of them.
       o.streams = Math.round(cl(o.streams, 1, 4, DEF.streams));
       o.probeRate = Math.round(cl(o.probeRate, 2, 20, DEF.probeRate));
-      return { server: o.server, directionSeconds: o.directionSeconds, idleSeconds: o.idleSeconds, warmupSeconds: o.warmupSeconds, streams: o.streams, probeRate: o.probeRate };
+      return { server: DEF.server, directionSeconds: o.directionSeconds, idleSeconds: o.idleSeconds, warmupSeconds: o.warmupSeconds, streams: o.streams, probeRate: o.probeRate };
     }
     function pub(s) { return Object.assign({}, s, { radarToken: '', defaults: DEF, web: true }); }
-    var cfg = sanitize(rd(SK, {}));
     // For testing on this computer only: ?web&server=http://127.0.0.1:9000
     var dev = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /[?&]server=([^&]+)/.exec(location.search);
-    if (dev) DEF.server = cfg.server = decodeURIComponent(dev[1]);
+    if (dev) DEF.server = decodeURIComponent(dev[1]);
+    var cfg = sanitize(rd(SK, {}));
 
     // Saving history: if the browser's storage is full, the oldest tests keep
     // their numbers but drop their graphs.
@@ -1109,324 +1499,27 @@
       }
     }
 
-    // ---- Server-Timing: cfL4 (the server's own TCP view) and its processing time
-    function parseL4(hdr) {
-      var m = /cfL4;desc="\??([^"]*)"/.exec(hdr || ''); if (!m) return null;
-      var q = {}; m[1].split('&').forEach(function (kv) { var p = kv.split('='); q[p[0]] = +p[1]; });
-      if (!isFinite(q.rtt)) return null;
-      return { rtt: q.rtt / 1000, minRtt: (q.min_rtt || 0) / 1000, rttVar: (q.rtt_var || 0) / 1000, sent: q.sent || 0, retrans: q.retrans || 0 };
+    function onEngine(ev) {
+      if (ev.type === 'reset') ev.config = pub(cfg);
+      if (ev.type === 'result') {
+        var list = rd(HK, []); list.push(ev.result);
+        if (!saveHistory(list)) (ev.result.warnings = ev.result.warnings || []).push('This browser would not save the result to its history.');
+      }
+      if (ev.type === 'end') running = false;
+      emit(ev);
     }
-    function serverMs(hdr) {
-      var t = 0, re = /(cfSpeedEdge|cfSpeedWorker);dur=([\d.]+)/g, m;
-      while ((m = re.exec(hdr || ''))) t += +m[2];
-      return t;
-    }
-    function summarizeL4(list) {
-      var st = { connections: 0, rtt: 0, minRtt: 0, rttVar: 0, sent: 0, retrans: 0, retransPct: 0 }, rtts = [], vars = [];
-      list.forEach(function (s) {
-        if (!s) return;
-        st.connections++; st.sent += s.sent; st.retrans += s.retrans; rtts.push(s.rtt); vars.push(s.rttVar);
-        if (s.minRtt > 0 && (!st.minRtt || s.minRtt < st.minRtt)) st.minRtt = s.minRtt;
-      });
-      if (!st.connections) return null;
-      st.rtt = r3(pct(rtts, 50)); st.rttVar = r3(pct(vars, 50)); st.minRtt = r3(st.minRtt);
-      if (st.sent) st.retransPct = st.retrans / st.sent * 100;
-      return st;
-    }
-    function pct(v, p) {
-      var s = v.slice().sort(function (a, b) { return a - b; }); if (!s.length) return 0;
-      var pos = p / 100 * (s.length - 1), lo = Math.floor(pos), hi = Math.ceil(pos);
-      return s[lo] + (s[hi] - s[lo]) * (pos - lo);
-    }
-    function latencyStats(probes, from, to, steadyFrom) {
-      var st = { median: 0, min: 0, p90: 0, jitter: 0, lossPct: 0, sent: 0, lost: 0 }, rtts = [];
-      probes.forEach(function (p) {
-        if (p.t < from || p.t >= to) return;
-        st.sent++;
-        if (p.rtt < 0) { st.lost++; return; }
-        if (p.t >= steadyFrom) rtts.push(p.rtt);
-      });
-      if (st.sent) st.lossPct = st.lost / st.sent * 100;
-      if (!rtts.length) return st;
-      st.median = pct(rtts, 50); st.p90 = pct(rtts, 90); st.min = Math.min.apply(null, rtts);
-      var sum = 0; for (var i = 1; i < rtts.length; i++) sum += Math.abs(rtts[i] - rtts[i - 1]);
-      if (rtts.length > 1) st.jitter = sum / (rtts.length - 1);
-      return st;
-    }
-    function haversineKm(a, b, c, d) {
-      var R = 6371, rad = Math.PI / 180, dLat = (c - a) * rad, dLon = (d - b) * rad;
-      var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a * rad) * Math.cos(c * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-      return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
-    }
-    function sleep(ms, signal) {
-      return new Promise(function (res, rej) {
-        var t = setTimeout(res, ms);
-        if (signal) signal.addEventListener('abort', function () { clearTimeout(t); rej(new DOMException('Stopped', 'AbortError')); }, { once: true });
-      });
-    }
-    function fail(msg) { var e = new Error(msg); e.test = true; return e; }
-    function title(k) { return k === 'download' ? 'Download' : 'Upload'; }
-
-    // Random bytes to upload, built once: 1 MB of noise repeated.
-    var noise = null;
-    function uploadBlob(size) {
-      if (!noise) { noise = new Uint8Array(1 << 20); for (var o = 0; o < noise.length; o += 65536) crypto.getRandomValues(noise.subarray(o, o + 65536)); }
-      var parts = [], left = size;
-      while (left > 0) { var n = Math.min(left, noise.length); parts.push(n === noise.length ? noise : noise.subarray(0, n)); left -= n; }
-      return new Blob(parts, { type: 'application/octet-stream' });
-    }
-
-    function Run(c) {
-      this.cfg = c; this.ctl = new AbortController(); this.stopped = false; this.phase = 'connect';
-      this.samples = []; this.probes = []; this.phases = []; this.warnings = []; this.xhrs = [];
-    }
-    Run.prototype.t = function () { return (performance.now() - this.t0) / 1000; };
-    Run.prototype.stop = function () { this.stopped = true; this.ctl.abort(); this.xhrs.forEach(function (x) { try { x.abort(); } catch (e) { } }); };
-    Run.prototype.status = function (s) { emit({ type: 'status', text: s }); };
-    Run.prototype.setPhase = function (name, s) { this.phase = name; emit({ type: 'phase', name: name, t: this.t() }); this.status(s); };
-    Run.prototype.markPhase = function (name, start, end) { this.phases.push({ name: name, start: start, end: end }); emit({ type: 'phaseEnd', name: name, start: start, end: end }); };
-
-    Run.prototype.meta = async function () {
-      var S = this.cfg.server, sig = this.ctl.signal;
-      var s = { host: new URL(S).host, ip: '', colo: '', city: '', country: '', lat: 0, lon: 0, hasGeo: false };
-      var c = { ip: '', asn: 0, isp: '', city: '', region: '', country: '', postal: '', lat: 0, lon: 0, hasGeo: false };
+    // The engine in a worker; in the page itself if the browser won't start one.
+    function startEngine() {
+      if (engine) return engine;
+      var src = document.getElementById('engineSrc').textContent;
+      var inPage = function () { var f = new Function(src + '\nreturn speedEngine;')(); var e = f(onEngine); return { start: e.start, stop: e.stop, where: 'page' }; };
       try {
-        var m = await (await fetch(S + '/meta', { signal: sig, cache: 'no-store' })).json();
-        c.ip = m.clientIp || ''; c.asn = +m.asn || 0; c.isp = m.asOrganization || ''; c.city = m.city || ''; c.region = m.region || '';
-        c.country = m.country || ''; c.postal = m.postalCode || '';
-        if (m.latitude != null && m.longitude != null) { c.lat = +m.latitude; c.lon = +m.longitude; c.hasGeo = !(c.lat === 0 && c.lon === 0); }
-        if (m.colo && typeof m.colo === 'object') {
-          s.colo = String(m.colo.iata || '').toUpperCase();
-          if (m.colo.lat != null && m.colo.lon != null) { s.lat = +m.colo.lat; s.lon = +m.colo.lon; s.hasGeo = true; s.city = m.colo.city || ''; s.country = m.colo.cca2 || ''; }
-        } else s.colo = String(m.colo || '').toUpperCase();
-      } catch (e) {
-        if (sig.aborted) throw e;
-        this.warnings.push('The Cloudflare speed test service did not send your ISP and location, so distance is not available.');
-      }
-      if (s.colo && !s.hasGeo) {
-        try {
-          var list = await (await fetch(S + '/locations', { signal: sig })).json();
-          var hit = list.filter(function (x) { return String(x.iata).toUpperCase() === s.colo; })[0];
-          if (hit) { s.lat = +hit.lat; s.lon = +hit.lon; s.city = hit.city || ''; s.country = hit.cca2 || ''; s.hasGeo = true; }
-        } catch (e) { if (sig.aborted) throw e; }
-      }
-      return { server: s, client: c };
-    };
-
-    // One round trip: an empty download, timed by the browser from sending the
-    // request to the first byte of the answer, less the time Cloudflare says it
-    // spent on it. No answer within a second counts as lost.
-    Run.prototype.ping = async function () {
-      var url = this.cfg.server + '/__down?bytes=0&p=' + (++seq) + '-' + Math.random().toString(36).slice(2, 8);
-      var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, 1000);
-      var t0 = performance.now();
-      try {
-        var resp = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
-        await resp.arrayBuffer();
-        clearTimeout(timer);
-        var e = performance.getEntriesByName(url).pop();
-        var raw = e && e.responseStart > 0 && e.requestStart > 0 ? e.responseStart - e.requestStart : performance.now() - t0;
-        return Math.max(0.1, raw - serverMs(resp.headers.get('server-timing')));
-      } catch (err) { clearTimeout(timer); return -1; }
-    };
-
-    Run.prototype.probeLoop = function () {
-      var self = this, inflight = 0, rate = this.cfg.probeRate;
-      var timer = setInterval(function () {
-        if (inflight >= 2) return;                    // leave the browser's connections to the transfers
-        var t = self.t(), ph = self.phase; inflight++;
-        self.ping().then(function (rtt) {
-          inflight--;
-          if (self.stopped) return;
-          var p = { t: r3(t), phase: ph, rtt: rtt < 0 ? -1 : r3(rtt) };
-          self.probes.push(p); emit({ type: 'probe', p: p });
-        });
-      }, 1000 / rate);
-      return function () {
-        clearInterval(timer);
-        return new Promise(function (res) {
-          var w = setInterval(function () { if (!inflight) { clearInterval(w); res(); } }, 50);
-          setTimeout(function () { clearInterval(w); res(); }, 1500);
-        });
-      };
-    };
-
-    // One request; bytes are counted as they move. Resolves with the HTTP status.
-    Run.prototype.request = function (kind, size, ctl, onBytes, onL4) {
-      var S = this.cfg.server, self = this;
-      if (kind === 'download') {
-        return fetch(S + '/__down?bytes=' + size + '&r=' + Math.random().toString(36).slice(2), { signal: ctl.signal, cache: 'no-store' }).then(function (resp) {
-          var l4 = parseL4(resp.headers.get('server-timing')); if (l4) onL4(l4);
-          if (!resp.ok || !resp.body) return resp.status;
-          var rd = resp.body.getReader();
-          return (function pump() {
-            return rd.read().then(function (x) { if (x.done) return resp.status; onBytes(x.value.byteLength); return pump(); });
-          })();
-        });
-      }
-      return new Promise(function (res, rej) {
-        var x = new XMLHttpRequest(), sent = 0;
-        self.xhrs.push(x);
-        var done = function () { var i = self.xhrs.indexOf(x); if (i >= 0) self.xhrs.splice(i, 1); };
-        x.open('POST', S + '/__up');
-        x.upload.onprogress = function (e) { if (e.loaded > sent) { onBytes(e.loaded - sent); sent = e.loaded; } };
-        x.onload = function () { done(); if (size > sent) onBytes(size - sent); var l4 = parseL4(x.getResponseHeader('server-timing')); if (l4) onL4(l4); res(x.status); };
-        x.onerror = function () { done(); res(0); };
-        x.onabort = function () { done(); rej(new DOMException('Stopped', 'AbortError')); };
-        ctl.signal.addEventListener('abort', function () { x.abort(); }, { once: true });
-        x.send(uploadBlob(size));
-      });
-    };
-
-    Run.prototype.transfer = async function (kind) {
-      var self = this, cfg = this.cfg;
-      var sizes = kind === 'download' ? [25e6, 10e6] : [25e6, 10e6, 5e6], sizeIdx = 0;
-      this.setPhase(kind, kind === 'download' ? 'Testing download...' : 'Testing upload...');
-      var start = this.t(), began = performance.now(), dur = cfg.directionSeconds, warm = cfg.warmupSeconds;
-      var ctl = new AbortController(), failErr = null, moved = 0, requests = 0, streamsDone = 0;
-      var stopAll = function () { ctl.abort(); };
-      this.ctl.signal.addEventListener('abort', stopAll, { once: true });
-      var l4 = new Array(cfg.streams).fill(null);
-      var setFail = function (e) { if (!failErr) { failErr = e; ctl.abort(); } };
-
-      var streams = [];
-      for (var i = 0; i < cfg.streams; i++) (function (slot) {
-        streams.push((async function () {
-          var errs = 0;
-          while (!ctl.signal.aborted) {
-            var idx = sizeIdx, status = 0, err = null;
-            requests++;
-            try { status = await self.request(kind, sizes[idx], ctl, function (n) { moved += n; }, function (s) { l4[slot] = s; }); }
-            catch (e) { err = e; }
-            if (ctl.signal.aborted) break;
-            var early = performance.now() - began < 3000;
-            if (status === 429) { setFail(fail('The Cloudflare speed test service is rate-limiting this connection (HTTP 429). Wait a while, then run again.')); break; }
-            if (status >= 200 && status < 300 && !err) { errs = 0; continue; }
-            if (early && idx < sizes.length - 1 && (status === 403 || status === 413 || (status === 0 && kind === 'upload'))) { if (sizeIdx === idx) sizeIdx = idx + 1; continue; }
-            if (++errs > 4) {
-              var why = err ? (err.message || 'network error') : 'HTTP ' + status;
-              if (moved > 0) { self.warnings.push('A ' + kind + ' stream kept failing and was dropped (' + why + ').'); break; }
-              setFail(fail(title(kind) + ' failed: ' + why + '.')); break;
-            }
-            try { await sleep(250, ctl.signal); } catch (e) { break; }
-          }
-          streamsDone++;
-        })());
-      })(i);
-
-      // Every 250 ms: how many bytes have moved.
-      var pts = [{ el: 0, b: 0 }], win = [], lastMove = performance.now(), lastBytes = 0;
-      await new Promise(function (resolve) {
-        var tick = setInterval(function () {
-          if (ctl.signal.aborted) { clearInterval(tick); resolve(); return; }
-          var now = performance.now(), el = (now - began) / 1000, b = moved, prev = pts[pts.length - 1];
-          pts.push({ el: el, b: b });
-          var mbps = el > prev.el ? (b - prev.b) * 8 / 1e6 / (el - prev.el) : 0;
-          win.push(mbps); if (win.length > 4) win.shift();
-          var s = { t: r3(start + el), phase: kind, mbps: r3(mbps), avg: r3(win.reduce(function (a, v) { return a + v; }, 0) / win.length) };
-          self.samples.push(s); emit({ type: 'sample', s: s, bytes: b });
-          if (b !== lastBytes) { lastBytes = b; lastMove = now; }
-          else if (now - lastMove > 5000) {
-            if (el > warm + 2 && b > 0) { self.warnings.push(title(kind) + ' stalled before the end; the result uses what was measured until then.'); ctl.abort(); }
-            else setFail(fail(title(kind) + ' stalled: no data moved for 5 seconds. Check the connection, then run again.'));
-            clearInterval(tick); resolve(); return;
-          }
-          if (el >= dur || streamsDone === cfg.streams) { ctl.abort(); clearInterval(tick); resolve(); }
-        }, 250);
-      });
-      var end = this.t();
-      await Promise.race([Promise.all(streams), sleep(5000)]);
-      this.ctl.signal.removeEventListener('abort', stopAll);
-      this.markPhase(kind, start, end);
-      if (this.stopped) throw new DOMException('Stopped', 'AbortError');
-      if (failErr) throw failErr;
-
-      // Steady state: everything after the warm-up, read over one-second windows.
-      var first = pts[0];
-      for (var k = 0; k < pts.length; k++) if (pts[k].el >= warm) { first = pts[k]; break; }
-      var last = pts[pts.length - 1];
-      if (last.el - first.el < 1) first = pts[0];
-      if (last.el <= first.el || last.b <= first.b) throw fail(title(kind) + ' moved no data.');
-      var readings = [];
-      for (var j = 4; j < pts.length; j++) {
-        var a = pts[j - 4];
-        if (a.el >= first.el && pts[j].el > a.el) readings.push((pts[j].b - a.b) * 8 / 1e6 / (pts[j].el - a.el));
-      }
-      var st = {
-        mbps: (last.b - first.b) * 8 / 1e6 / (last.el - first.el), median: 0, p90: 0, peak: 0,
-        bytes: last.b, seconds: last.el, requests: requests, streams: cfg.streams, fileSize: sizes[sizeIdx],
-        latency: null, bloatMs: 0, server: summarizeL4(l4)
-      };
-      if (readings.length) { st.median = pct(readings, 50); st.p90 = pct(readings, 90); st.peak = Math.max.apply(null, readings); }
-      emit({ type: 'phaseResult', name: kind, stats: st });
-      return st;
-    };
-
-    Run.prototype.run = async function () {
-      var cfg = this.cfg;
-      try { performance.setResourceTimingBufferSize(20000); performance.clearResourceTimings(); } catch (e) { }
-      this.status('Reading connection details...');
-      var meta = await this.meta();
-      var res = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), when: Date.now(), config: Object.assign({}, cfg),
-        server: meta.server, client: meta.client, distanceKm: 0, fiberFloorMs: 0, probeMethod: 'HTTP round trip (browser)', web: true
-      };
-      if (meta.server.hasGeo && meta.client.hasGeo) {
-        res.distanceKm = haversineKm(meta.client.lat, meta.client.lon, meta.server.lat, meta.server.lon);
-        res.fiberFloorMs = 2 * res.distanceKm / 204190 * 1000;
-      }
-      emit({ type: 'meta', server: meta.server, client: meta.client, distanceKm: res.distanceKm, fiberFloorMs: res.fiberFloorMs, probeMethod: res.probeMethod });
-
-      // Open the two connections the pings use, so setting them up (DNS, TCP,
-      // TLS) is not counted as delay or loss. Not recorded.
-      this.status('Opening connections...');
-      for (var w = 0; w < 3 && !this.stopped; w++) await Promise.all([this.ping(), this.ping()]);
-      if (this.stopped) throw new DOMException('Stopped', 'AbortError');
-
-      this.t0 = performance.now();
-      var stopProbes = this.probeLoop();
-      try {
-        this.setPhase('idle', 'Measuring idle latency...');
-        var idleStart = this.t();
-        await sleep(cfg.idleSeconds * 1000, this.ctl.signal);
-        this.markPhase('idle', idleStart, this.t());
-        var down = await this.transfer('download');
-        var up = await this.transfer('upload');
-        this.status('Finishing...');
-        await stopProbes();
-        res.samples = this.samples; res.phases = this.phases; res.warnings = this.warnings;
-        res.probes = this.probes.slice().sort(function (a, b) { return a.t - b.t; });
-        res.phases.forEach(function (ph) {
-          if (ph.name === 'idle') res.idle = latencyStats(res.probes, ph.start, ph.end, ph.start);
-          else if (ph.name === 'download') down.latency = latencyStats(res.probes, ph.start, ph.end, ph.start + cfg.warmupSeconds);
-          else if (ph.name === 'upload') up.latency = latencyStats(res.probes, ph.start, ph.end, ph.start + cfg.warmupSeconds);
-        });
-        if (res.idle && res.idle.sent > res.idle.lost) {
-          if (down.latency.sent > down.latency.lost) down.bloatMs = down.latency.median - res.idle.median;
-          if (up.latency.sent > up.latency.lost) up.bloatMs = up.latency.median - res.idle.median;
-        }
-        res.download = down; res.upload = up;
-        res.probesSent = res.probes.length;
-        res.probesLost = res.probes.filter(function (p) { return p.rtt < 0; }).length;
-        res.lossPct = res.probesSent ? res.probesLost / res.probesSent * 100 : 0;
-        return res;
-      } finally { stopProbes(); }
-    };
-
-    async function execute(r) {
-      var c = r.cfg;
-      emit({ type: 'reset', config: pub(c), plan: { idle: c.idleSeconds, dir: c.directionSeconds, warmup: c.warmupSeconds, total: c.idleSeconds + 2 * c.directionSeconds } });
-      try {
-        var res = await r.run();
-        var list = rd(HK, []); list.push(res);
-        if (!saveHistory(list)) res.warnings.push('This browser would not save the result to its history.');
-        emit({ type: 'result', result: res });
-      } catch (e) {
-        if (r.stopped) emit({ type: 'error', kind: 'stopped', message: 'Stopped.' });
-        else emit({ type: 'error', kind: 'failed', message: e.test ? e.message : 'The test failed: ' + (e.message || e) });
-      }
-      run = null;
-      emit({ type: 'end' });
+        var w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+        w.onmessage = function (e) { onEngine(e.data); };
+        w.onerror = function (e) { e.preventDefault(); if (engine && engine.where === 'worker') { engine = inPage(); if (running) { running = false; emit({ type: 'error', kind: 'failed', message: 'The test engine stopped unexpectedly. Run again.' }); emit({ type: 'end' }); } } };
+        engine = { start: function (c) { w.postMessage({ cmd: 'start', cfg: c }); }, stop: function () { w.postMessage({ cmd: 'stop' }); }, where: 'worker' };
+      } catch (e) { engine = inPage(); }
+      return engine;
     }
 
     function json(v) { return Promise.resolve(JSON.parse(JSON.stringify(v))); }
@@ -1445,16 +1538,16 @@
             if (body && body.clear) wr(HK, []);
             return json(rd(HK, []));
           case '/api/start':
-            if (run) return Promise.reject(new Error('A test is already running.'));
-            run = new Run(cfg); execute(run); return json({ ok: true });
+            if (running) return Promise.reject(new Error('A test is already running.'));
+            running = true; startEngine().start(Object.assign({ page: location.href.split('#')[0] }, cfg)); return json({ ok: true });
           case '/api/stop':
-            if (run) run.stop(); return json({ ok: true });
+            if (engine) engine.stop(); return json({ ok: true });
           case '/api/checktoken':
             return json({ ok: false, message: 'Comparing with other users needs the desktop app.' });
         }
         return Promise.reject(new Error('not in the web version'));
       },
-      connect: function (fn) { emit = fn; }
+      connect: function (fn) { emit = fn; if (WEB) startEngine(); }
     };
   })();
 
@@ -1480,7 +1573,7 @@
     switch (ev.type) {
       case 'reset':
         live = newLive(ev); viewing = null; setRunning(true); clearReadouts(); renderConnection(null); renderCompare(null); resetMeters();
-        renderQuality(null); renderRoute(null);
+        renderQuality(null); renderRoute(null); $('copyReport').hidden = true;
         break;
       case 'status':
         setStatus(ev.text, false, true);
@@ -1623,8 +1716,9 @@
     showPhase('download', r.download);
     showPhase('upload', r.upload);
     setMeter('download', r.download.mbps, true); setMeter('upload', r.upload.mbps, true);
-    renderConnection({ server: r.server, client: r.client, distanceKm: r.distanceKm, fiberFloorMs: r.fiberFloorMs, probeMethod: r.probeMethod }, r);
+    renderConnection({ server: r.server, client: r.client, distanceKm: r.distanceKm, fiberFloorMs: r.fiberFloorMs, probeMethod: r.probeMethod, setup: r.setup, adapter: r.adapter }, r);
     setChip(r.server);
+    ui.reportOf = r; $('copyReport').hidden = false;
     renderCompare(r);
     renderQuality(r);
     renderRoute(r.route || null, r);
@@ -1633,9 +1727,12 @@
   // ------------------------------------------------------------------ Connection card
   function renderConnection(m, r) {
     var box = $('conn'); box.textContent = '';
-    var you = h('div'), srv = h('div'), dist = h('div');
+    var you = h('div'), srv = h('div'), dist = h('div'), pc = null;
     you.appendChild(h('h3', null, 'You')); srv.appendChild(h('h3', null, 'Server')); dist.appendChild(h('h3', null, 'Distance'));
-    box.appendChild(you); box.appendChild(srv); box.appendChild(dist);
+    box.appendChild(you);
+    box.className = 'conn' + (m && m.adapter ? ' four' : '');
+    if (m && m.adapter) { pc = h('div'); pc.appendChild(h('h3', null, 'This computer')); box.appendChild(pc); }
+    box.appendChild(srv); box.appendChild(dist);
     if (!m) {
       if (running) {
         you.appendChild(waiting('Looking up your IP and ISP\u2026'));
@@ -1658,8 +1755,11 @@
       ['Data centre', s.colo ? s.colo + (s.city ? ', ' + s.city : '') : 'unknown'],
       ['IP', s.ip],
       ['Host', s.host],
-      ['Pings', m.probeMethod]
+      ['Pings', m.probeMethod],
+      ['Setup', setupText(m.setup)],
+      ['Protocol', m.setup ? [m.setup.protocol, m.setup.tlsVersion].filter(Boolean).join(', ') : '']
     ]));
+    if (pc) pc.appendChild(facts(adapterRows(m.adapter)));
     if (!m.distanceKm) {
       dist.appendChild(h('p', 'muted', 'Not available: the server or your location could not be placed.'));
       return;
@@ -1858,12 +1958,101 @@
     });
     wrap.appendChild(uses);
     box.appendChild(wrap);
+    var fl = findings(r);
+    if (fl.length) {
+      var ul = h('ul', 'findings');
+      fl.forEach(function (f) { var li = h('li', f[0]); li.innerHTML = '<span>' + f[1] + '</span>'; ul.appendChild(li); });
+      box.appendChild(ul);
+    }
     var sv = r.download.server;
     if (sv) {
       box.appendChild(h('p', 'qnote', 'The Cloudflare server’s own TCP stack saw ' + fmtMs(sv.minRtt) + ' ms minimum round trip and resent ' +
         fmtPct(sv.retransPct) + '% of the packets it sent you during the download (' + sv.retrans + ' of ' + sv.sent.toLocaleString() + '): ' +
         (sv.retransPct < 0.5 ? 'very little loss on the way to you.' : sv.retransPct < 2 ? 'some loss on the way to you, normal for a busy line.' : 'noticeable loss on the way to you.')));
     }
+  }
+
+  // What stands out in a result, most useful first. Each finding says what was
+  // seen and where to look; thresholds follow the guide (Cloudflare AIM bands,
+  // Microsoft's Teams targets).
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function findings(r) {
+    var out = [], a = r.adapter, d = r.download, u = r.upload, st = r.setup;
+    var bloat = Math.max(0, d.bloatMs || 0, u.bloatMs || 0), worse = (d.bloatMs || 0) >= (u.bloatMs || 0) ? 'downloading' : 'uploading';
+    if (a && a.linkDownMbps) {
+      if (d.mbps >= a.linkDownMbps * 0.85 || u.mbps >= (a.linkUpMbps || a.linkDownMbps) * 0.85)
+        out.push(['warn', '<b>Capped by this computer’s link.</b> The ' + esc(a.kind) + ' link is ' + esc(linkText(a)) + ', and the test reached ' + Math.round(Math.max(d.mbps / a.linkDownMbps, u.mbps / (a.linkUpMbps || a.linkDownMbps)) * 100) + '% of it. The line may be faster than this test can show.']);
+      if (a.kind === 'Ethernet' && a.linkDownMbps <= 100)
+        out.push(['warn', '<b>Ethernet linked at ' + esc(fmtLink(a.linkDownMbps)) + '.</b> Gigabit ports link at 100 Mbps over a damaged cable, a cable with two pairs, or an old switch port. Try another cable or port.']);
+    }
+    if (a && a.kind === 'Wi-Fi') out.push(['note', '<b>On Wi-Fi.</b> Run once on a cable: if wired is fine, the problem is the wireless link, not the ISP.']);
+    if (a && a.kind === 'VPN or tunnel') out.push(['note', '<b>Through a VPN or tunnel.</b> Results describe the tunnel. Test once without it to see the line itself.']);
+    if (r.idle.lost > 0) out.push(['warn', '<b>Loss on a quiet line</b> (' + r.idle.lost + ' of ' + r.idle.sent + ' pings). With nothing else running, that points at layers 1–2: Wi-Fi signal, a cable, or the modem’s line.']);
+    else if (r.lossPct >= 1) out.push(['warn', '<b>Loss under load</b> (' + fmtPct(r.lossPct) + '%) but none idle: queues overflowing, the same cause as bufferbloat.']);
+    if (bloat >= 50) out.push(['warn', '<b>Bufferbloat: +' + fmtMs(bloat) + ' ms while ' + worse + '.</b> Turn on QoS or SQM (fq_codel or CAKE) in the router, set to about 90% of these speeds.']);
+    else if (bloat >= 20) out.push(['note', '<b>Some bufferbloat: +' + fmtMs(bloat) + ' ms while ' + worse + '.</b> Calls may stutter during big transfers; QoS or SQM in the router helps.']);
+    var sv = d.server;
+    if (sv && sv.retransPct >= 2) out.push(['warn', '<b>Cloudflare resent ' + fmtPct(sv.retransPct) + '% of download packets.</b> That is loss on the way to you; check for errors on the modem line or Wi-Fi.']);
+    if (r.distanceKm && r.idle.median && r.idle.median - r.fiberFloorMs > 40)
+      out.push(['note', '<b>Ping is ' + fmtMs(r.idle.median - r.fiberFloorMs) + ' ms above the physics floor</b> for ' + esc(fmtKm(r.distanceKm)) + '. ' + (r.route ? 'The route below shows where it is added.' : 'A route trace (desktop app) shows where.')]);
+    if (st && !st.reused && st.dnsMs >= 100) out.push(['note', '<b>DNS took ' + fmtMs(st.dnsMs) + ' ms.</b> Slow name lookups delay every new site; try another DNS server.']);
+    if (d.mbps > 0 && u.mbps > d.mbps * 1.5) out.push(['note', '<b>Upload is faster than download.</b> Unusual for home lines: check that nothing else was downloading during the test.']);
+    if (!out.length) out.push(['ok', '<b>Nothing stands out.</b> No loss, little bufferbloat and no local limit on speed.']);
+    return out;
+  }
+
+  // ------------------------------------------------------------------ Plain-text report, for a ticket or a chat
+  function textReport(r) {
+    var L = [], c = r.client || {}, s = r.server || {}, a = r.adapter, st = r.setup;
+    var pad = function (t, n) { t = String(t); while (t.length < n) t += ' '; return t; };
+    var lpad = function (t, n) { t = String(t); while (t.length < n) t = ' ' + t; return t; };
+    var f1 = function (v) { return (Math.round((v || 0) * 10) / 10).toFixed(1); };
+    L.push('Speed Test report, ' + new Date(r.when).toLocaleString() + (r.web ? ' (web version)' : ''));
+    L.push('From:        ' + [c.ip, c.isp ? c.isp + (c.asn ? ' (AS' + c.asn + ')' : '') : '', place(c)].filter(Boolean).join(' · '));
+    L.push('Server:      Cloudflare ' + (s.colo || '?') + (s.city ? ' (' + s.city + ')' : '') + (s.ip ? ' · ' + s.ip : '') +
+      (r.distanceKm ? ' · ' + Math.round(r.distanceKm) + ' km away, physics floor ' + fmtMs(r.fiberFloorMs) + ' ms' : ''));
+    if (a) L.push('Adapter:     ' + [a.kind + (a.name ? ' "' + a.name + '"' : ''), linkText(a) ? 'link ' + linkText(a) : '', 'local ' + a.localIp,
+      (a.gateways || []).length ? 'gateway ' + a.gateways.join(', ') : '', (a.dns || []).length ? 'DNS ' + a.dns.join(', ') : '', a.mtu ? 'MTU ' + a.mtu : ''].filter(Boolean).join(' · '));
+    if (st) L.push('Setup:       ' + setupText(st) + ' (' + [st.protocol, st.tlsVersion].filter(Boolean).join(', ') + ')');
+    if (r.web && r.userAgent) L.push('Browser:     ' + r.userAgent);
+    L.push('');
+    [['Download', r.download], ['Upload', r.upload]].forEach(function (x) {
+      var p = x[1];
+      L.push(pad(x[0], 12) + lpad(f1(p.mbps), 8) + ' Mbps   median ' + f1(p.median) + ' · 90th ' + f1(p.p90) + '   loaded ping ' + f1(p.latency.median) + ' ms (+' + f1(Math.max(0, p.bloatMs)) + ')');
+    });
+    L.push(pad('Idle ping', 12) + lpad(f1(r.idle.median), 8) + ' ms     jitter ' + f1(r.idle.jitter) + ' ms · loss ' + f1(r.idle.lossPct) + '% of ' + r.idle.sent + ' pings (' + r.probeMethod + ')');
+    var bl = Math.max(0, r.download.bloatMs || 0, r.upload.bloatMs || 0);
+    L.push(pad('Bufferbloat', 12) + bloatGrade(bl) + ' (+' + f1(bl) + ' ms under load, Cloudflare AIM bands)');
+    L.push(pad('Loss', 12) + f1(r.lossPct) + '% of ' + r.probesSent + ' pings over the whole test');
+    var sd = r.download.server, su = r.upload.server;
+    if (sd) L.push(pad('Server TCP', 12) + 'min RTT ' + f1(sd.minRtt) + ' ms · resent ' + sd.retransPct.toFixed(2) + '% downloading' + (su ? ', ' + su.retransPct.toFixed(2) + '% uploading' : ''));
+    if (r.tcp) L.push(pad('Local TCP', 12) + r.tcp.ratePct.toFixed(2) + '% of ' + r.tcp.segmentsSent + ' segments resent');
+    L.push(pad('Good for', 12) + ratings(r).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · '));
+    if (r.route && r.route.length) {
+      L.push(''); L.push('Route:');
+      r.route.forEach(function (hp) {
+        var who = hp.ip ? (hp.host ? hp.host + ' (' + hp.ip + ')' : hp.ip) : '*';
+        L.push('  ' + pad(String(hp.ttl), 3) + pad(who, 48) + ' ' + hp.rtts.map(function (v) { return v >= 0 ? f1(v) : '*'; }).join('  '));
+      });
+    }
+    var fl = findings(r);
+    L.push(''); L.push('Findings:');
+    fl.forEach(function (f) { L.push('- ' + f[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')); });
+    (r.warnings || []).forEach(function (w) { L.push('Note: ' + w); });
+    L.push('');
+    L.push('Test: ' + r.config.directionSeconds + ' s each way, ' + r.config.streams + ' connections, ' + r.config.warmupSeconds + ' s warm-up left out');
+    return L.join('\n') + '\n';
+  }
+  $('copyReport').addEventListener('click', function () {
+    var r = ui.reportOf; if (!r) return;
+    var text = textReport(r), btn = this;
+    var done = function (ok) { btn.textContent = ok ? 'Copied' : 'Copy failed'; setTimeout(function () { btn.textContent = 'Copy report'; }, 1800); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(fallbackCopy(text)); });
+    else done(fallbackCopy(text));
+  });
+  function fallbackCopy(text) {
+    var t = document.createElement('textarea'); t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) { } t.remove(); return ok;
   }
 
   // ------------------------------------------------------------------ Route
@@ -2005,8 +2194,10 @@
       ['Server', (s.colo || '') + (s.city ? ', ' + s.city : '')], ['Server IP', s.ip],
       ['Distance', r.distanceKm ? fmtKm(r.distanceKm) : 'unknown'],
       ['Fibre floor', r.distanceKm ? fmtMs(r.fiberFloorMs) + ' ms' : ''],
-      ['Over floor', r.distanceKm && r.idle.median ? fmtMs(r.idle.median - r.fiberFloorMs) + ' ms' : '']
+      ['Over floor', r.distanceKm && r.idle.median ? fmtMs(r.idle.median - r.fiberFloorMs) + ' ms' : ''],
+      ['Setup', setupText(r.setup)]
     ]);
+    if (r.adapter) sect('This computer', adapterRows(r.adapter));
     sect('Latency', [
       ['Idle', fmtMs(r.idle.median) + ' ms (min ' + fmtMs(r.idle.min) + ', 90th ' + fmtMs(r.idle.p90) + ')'],
       ['Idle jitter', fmtMs(r.idle.jitter) + ' ms'],
@@ -2069,15 +2260,29 @@
   var BUCKETS = [[20, '< 20 ms'], [50, '20–50 ms'], [100, '50–100 ms'], [250, '100–250 ms'], [Infinity, '250+ ms']];
   var plot = { left: 0, w: 1, top: 0, h: 0, total: 1 };
 
-  function frame() {
-    ui.tick = (ui.tick || 0) + 1;
-    if (ui.dirty) { ui.dirty = false; draw(); if (sand.active) ui.dirty = true; }
-    else if (sand.ambient && view.style === 'liquid' && view.type !== 'pie' && ui.tick % 2 === 0) draw();
+  // Drawing runs only when something changed. The animated fluid redraws at up
+  // to 30 frames a second while it moves and 15 while it idles, so the page
+  // never competes hard with the test for the processor.
+  function frame(now) {
+    var gap = now - (ui.lastDraw || 0);
+    if (ui.dirty && (!sand.active || gap >= 33)) { ui.dirty = false; ui.lastDraw = now; draw(); if (sand.active) ui.dirty = true; }
+    else if (!ui.dirty && sand.ambient && view.style === 'liquid' && view.type !== 'pie' && gap >= 66) { ui.lastDraw = now; draw(); }
     requestAnimationFrame(frame);
   }
 
+  // The canvas box's size, read once per resize rather than on every frame
+  // (reading it after the readouts change forces the browser to lay out the page).
+  var boxSize = { w: 0, h: 0 };
+  (function () {
+    var box = $('canvas').parentNode;
+    var read = function () { boxSize.w = box.clientWidth; boxSize.h = box.clientHeight; ui.dirty = true; };
+    read();
+    if (window.ResizeObserver) new ResizeObserver(read).observe(box);
+    else window.addEventListener('resize', read);
+  })();
+
   function setupCanvas() {
-    var cv = $('canvas'), box = cv.parentNode, w = box.clientWidth, hh = box.clientHeight;
+    var cv = $('canvas'), w = boxSize.w, hh = boxSize.h;
     var dpr = window.devicePixelRatio || 1;
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(hh * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr); }
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2091,12 +2296,17 @@
     var d = shown();
     sand.active = false; sand.ambient = false;
     renderLegend();
-    $('chartTitle').textContent = view.type === 'pie' ? 'Ping times by phase' : 'Speed and latency';
+    setText($('chartTitle'), view.type === 'pie' ? 'Ping times by phase' : 'Speed and latency');
     if (view.type === 'pie') return drawPie(d, size);
     drawTimeline(d, size);
   }
 
+  function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
+
   function renderLegend() {
+    var key = [view.type, view.style, view.lat, view.loss, document.documentElement.dataset.theme].join('|');
+    if (ui.legendKey === key) return;
+    ui.legendKey = key;
     var L = $('legend'); L.textContent = '';
     function item(color, text, kind) { var s = h('span'); var sw = h('i', 'sw ' + (kind || '')); sw.style.background = color; s.appendChild(sw); s.appendChild(document.createTextNode(text)); L.appendChild(s); }
     if (view.type === 'pie') {

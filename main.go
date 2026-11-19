@@ -48,6 +48,9 @@ func main() {
 	noBrowser := flag.Bool("no-browser", false, "do not open the browser")
 	flag.StringVar(&webDir, "web", "", "serve index.html from this folder instead of the built-in copy")
 	flag.StringVar(&baseDir, "data", "", "folder for settings.json and history.json (default: next to the program)")
+	cli := flag.Bool("run", false, "run one test in this window and print the result, without opening the page")
+	asJSON := flag.Bool("json", false, "with -run: print the whole result as JSON")
+	seconds := flag.Float64("seconds", 0, "with -run: seconds for each direction (5-30; default from settings)")
 	flag.Parse()
 
 	if baseDir == "" {
@@ -59,6 +62,9 @@ func main() {
 		}
 	}
 	settings = loadSettings()
+	if *cli {
+		os.Exit(runCLI(*asJSON, *seconds, os.Stdout, os.Stderr))
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleIndex)
