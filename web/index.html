@@ -1076,6 +1076,7 @@ function speedEngine(post) {
   // Upload data: 1 MB of random bytes, and one Blob per size built from it once.
   // Blobs are immutable, so every request can send the same one without copying.
   var noise = null, blobs = {};
+  var UP_STEPS = [5e5, 1e6, 2e6, 5e6, 1e7, 2.5e7];   // upload sizes while progress reports are sparse
   function uploadBlob(size) {
     if (blobs[size]) return blobs[size];
     if (!noise) { noise = new Uint8Array(1 << 20); for (var o = 0; o < noise.length; o += 65536) crypto.getRandomValues(noise.subarray(o, o + 65536)); }
@@ -1189,7 +1190,13 @@ function speedEngine(post) {
       self.xhrs.push(x);
       var done = function () { var i = self.xhrs.indexOf(x); if (i >= 0) self.xhrs.splice(i, 1); };
       x.open('POST', S + '/__up');
-      x.upload.onprogress = function (e) { if (e.loaded > sent) { onBytes(e.loaded - sent); sent = e.loaded; } };
+      var seen = 0;
+      x.upload.onprogress = function (e) {
+        // Test switch for Safari's behaviour (?noprogress on this computer): only the first report.
+        if (self.cfg.noProgress && seen++ > 0) return;
+        if (e.loaded > 0 && e.loaded < size) self.progressReports++;
+        if (e.loaded > sent) { onBytes(e.loaded - sent); sent = e.loaded; }
+      };
       x.onload = function () { done(); if (size > sent) onBytes(size - sent); var l4 = parseL4(x.getResponseHeader('server-timing')); if (l4) onL4(l4); res(x.status); };
       x.onerror = function () { done(); res(0); };
       x.onabort = function () { done(); rej(stopped()); };
@@ -1201,7 +1208,7 @@ function speedEngine(post) {
   Run.prototype.transfer = async function (kind) {
     var self = this, cfg = this.cfg;
     var sizes = kind === 'download' ? [25e6, 10e6] : [25e6, 10e6, 5e6], sizeIdx = 0;
-    if (kind === 'upload') sizes.forEach(uploadBlob);   // built before the clock starts
+    if (kind === 'upload') { this.progressReports = 0; sizes.concat(UP_STEPS).forEach(uploadBlob); }   // built before the clock starts
     this.setPhase(kind, kind === 'download' ? 'Testing download...' : 'Testing upload...');
     var start = this.t(), began = performance.now(), dur = cfg.directionSeconds, warm = cfg.warmupSeconds;
     var ctl = new AbortController(), failErr = null, moved = 0, requests = 0, streamsDone = 0;
@@ -1218,13 +1225,21 @@ function speedEngine(post) {
         // TCP figures. No bursts of quick requests: Cloudflare refuses those.
         // Uploads stay large: they count as they enter the send buffer, which
         // refills in a burst per request.
+        //
+        // Some browsers (Safari, so every iPhone browser) report upload progress
+        // once or not at all until a request is done. Until steady reports show
+        // up, uploads use requests sized to finish in about 1.5 s, each counted
+        // when Cloudflare confirms it, so a slow uplink still counts its bytes.
         var errs = 0;
         while (!ctl.signal.aborted) {
           var idx = sizeIdx, status = 0, err = null, size = sizes[idx];
+          var el = (performance.now() - began) / 1000;
           if (kind === 'download') {
-            var el = (performance.now() - began) / 1000;
             var want = moved > 0 && el > 0.25 ? moved / el / cfg.streams * 2 : 2e6;
             size = Math.round(Math.min(sizes[idx], Math.max(2e6, want)));
+          } else if (self.progressReports < 8) {
+            var wantUp = moved > 0 && el > 0.25 ? moved / el / cfg.streams * 1.5 : 1e6;
+            size = UP_STEPS.filter(function (v) { return v <= wantUp && v <= sizes[idx]; }).pop() || UP_STEPS[0];
           }
           requests++;
           try { status = await self.request(kind, size, ctl, function (n) { moved += n; }, function (s) { l4[slot] = s; }); }
@@ -1256,10 +1271,12 @@ function speedEngine(post) {
         win.push(mbps); if (win.length > 4) win.shift();
         var s = { t: r3(start + el), phase: kind, mbps: r3(mbps), avg: r3(win.reduce(function (a, v) { return a + v; }, 0) / win.length) };
         self.samples.push(s); post({ type: 'sample', s: s, bytes: b });
+        // Without progress reports, bytes arrive a request at a time: allow longer gaps.
+        var stallMs = kind === 'upload' && self.progressReports < 8 ? 12000 : 5000;
         if (b !== lastBytes) { lastBytes = b; lastMove = now; }
-        else if (now - lastMove > 5000) {
+        else if (now - lastMove > stallMs) {
           if (el > warm + 2 && b > 0) { self.warnings.push(title(kind) + ' stalled before the end; the result uses what was measured until then.'); ctl.abort(); }
-          else setFail(fail(title(kind) + ' stalled: no data moved for 5 seconds. Check the connection, then run again.'));
+          else setFail(fail(title(kind) + ' stalled: no data moved for ' + stallMs / 1000 + ' seconds. Check the connection, then run again.'));
           clearInterval(tick); resolve(); return;
         }
         if (el >= dur || streamsDone === cfg.streams) { ctl.abort(); clearInterval(tick); resolve(); }
@@ -1299,7 +1316,7 @@ function speedEngine(post) {
     this.status('Reading connection details...');
     var meta = await this.meta();
     var res = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), when: Date.now(), config: Object.assign({}, cfg, { page: undefined }),
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), when: Date.now(), config: Object.assign({}, cfg, { page: undefined, noProgress: undefined }),
       server: meta.server, client: meta.client, setup: meta.setup, distanceKm: 0, fiberFloorMs: 0,
       probeMethod: 'HTTP round trip (browser)', web: true, userAgent: navigator.userAgent
     };
@@ -1507,6 +1524,7 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
     // For testing on this computer only: ?web&server=http://127.0.0.1:9000
     var dev = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /[?&]server=([^&]+)/.exec(location.search);
     if (dev) DEF.server = decodeURIComponent(dev[1]);
+    var noProgress = !!dev && /[?&]noprogress\b/.test(location.search);
     var cfg = sanitize(rd(SK, {}));
 
     // Saving history: if the browser's storage is full, the oldest tests keep
@@ -1560,7 +1578,7 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
             return json(rd(HK, []));
           case '/api/start':
             if (running) return Promise.reject(new Error('A test is already running.'));
-            running = true; startEngine().start(Object.assign({ page: location.href.split('#')[0] }, cfg)); return json({ ok: true });
+            running = true; startEngine().start(Object.assign({ page: location.href.split('#')[0], noProgress: noProgress }, cfg)); return json({ ok: true });
           case '/api/stop':
             if (engine) engine.stop(); return json({ ok: true });
           case '/api/checktoken':
