@@ -582,25 +582,13 @@ func (r *Run) transfer(kind string) (PhaseStats, error) {
 			defer tr.CloseIdleConnections()
 			c := &http.Client{Transport: tr}
 			errs := 0
-			// Each connection starts with small requests and doubles them while
-			// they finish quickly, so a slow line still completes requests (and
-			// gets the server's TCP figures, which come with each answer) while a
-			// fast one soon spends almost no time between requests.
-			// Uploads keep the large size from the start: an upload is counted as
-			// it enters the computer's send buffer, which refills in a burst at
-			// every new request and would make short requests read unevenly.
-			cur := int64(2e6)
-			if kind == "upload" {
-				cur = sizes[0]
-			}
 			for ctx.Err() == nil {
 				idx := atomic.LoadInt32(&sizeIdx)
 				size := sizes[idx]
-				if cur < size {
-					size = cur
+				if kind == "download" {
+					size = downloadSize(size, atomic.LoadInt64(&moved), time.Since(began), r.cfg.Streams)
 				}
 				atomic.AddInt64(&requests, 1)
-				reqStart := time.Now()
 				status, err := r.request(ctx, c, kind, size, &moved, onL4)
 				if ctx.Err() != nil {
 					return
@@ -612,9 +600,6 @@ func (r *Run) transfer(kind string) (PhaseStats, error) {
 					return
 				case status >= 200 && status < 300 && err == nil:
 					errs = 0
-					if time.Since(reqStart) < 1500*time.Millisecond && cur < sizes[0] {
-						cur *= 2
-					}
 					continue
 				case early && int(idx) < len(sizes)-1 && (status == 403 || status == 413 || (status == 0 && kind == "upload")):
 					// The server turned the file size down: everyone steps down one size.
@@ -748,6 +733,31 @@ loop:
 	l4mu.Unlock()
 	r.emit("phaseResult", "name", kind, "stats", st)
 	return st, nil
+}
+
+// downloadSize picks a request size that takes about two seconds at the speed
+// measured so far: a slow line still completes requests within the test (and
+// gets the server's TCP figures, which come with each answer), while a fast
+// one goes straight to the largest size. The first request on each connection
+// is 2 MB. Sizes never step up in a burst of quick requests: Cloudflare refuses
+// a run of rapid requests from one address.
+//
+// Uploads keep the largest size from the start: an upload is counted as it
+// enters this computer's send buffer, which refills in a burst at every new
+// request and makes short requests read unevenly.
+func downloadSize(max, moved int64, elapsed time.Duration, streams int) int64 {
+	const first = 2e6
+	want := int64(first)
+	if moved > 0 && elapsed > 250*time.Millisecond && streams > 0 {
+		want = int64(float64(moved) / elapsed.Seconds() / float64(streams) * 2)
+	}
+	if want < first {
+		want = first
+	}
+	if want > max {
+		want = max
+	}
+	return want
 }
 
 func waitTimeout(wg *sync.WaitGroup, d time.Duration) {

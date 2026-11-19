@@ -1207,18 +1207,26 @@ function speedEngine(post) {
     var streams = [];
     for (var i = 0; i < cfg.streams; i++) (function (slot) {
       streams.push((async function () {
-        // Small requests first, doubling while they finish quickly: a slow line
-        // still completes requests (each answer carries the server's TCP view).
-        var errs = 0, cur = kind === 'download' ? 2e6 : sizes[0];   // uploads count as they enter the send buffer, which refills in a burst per request: keep them large
+        // Downloads: about two seconds per request at the speed so far (2 MB to
+        // start), so a slow line still completes requests and gets the server's
+        // TCP figures. No bursts of quick requests: Cloudflare refuses those.
+        // Uploads stay large: they count as they enter the send buffer, which
+        // refills in a burst per request.
+        var errs = 0;
         while (!ctl.signal.aborted) {
-          var idx = sizeIdx, status = 0, err = null, size = Math.min(cur, sizes[idx]), t0 = performance.now();
+          var idx = sizeIdx, status = 0, err = null, size = sizes[idx];
+          if (kind === 'download') {
+            var el = (performance.now() - began) / 1000;
+            var want = moved > 0 && el > 0.25 ? moved / el / cfg.streams * 2 : 2e6;
+            size = Math.round(Math.min(sizes[idx], Math.max(2e6, want)));
+          }
           requests++;
           try { status = await self.request(kind, size, ctl, function (n) { moved += n; }, function (s) { l4[slot] = s; }); }
           catch (e) { err = e; }
           if (ctl.signal.aborted) break;
           var early = performance.now() - began < 3000;
           if (status === 429) { setFail(fail('The Cloudflare speed test service is rate-limiting this connection (HTTP 429). Wait a while, then run again.')); break; }
-          if (status >= 200 && status < 300 && !err) { errs = 0; if (performance.now() - t0 < 1500 && cur < sizes[0]) cur *= 2; continue; }
+          if (status >= 200 && status < 300 && !err) { errs = 0; continue; }
           if (early && idx < sizes.length - 1 && (status === 403 || status === 413 || (status === 0 && kind === 'upload'))) { if (sizeIdx === idx) sizeIdx = idx + 1; continue; }
           if (++errs > 4) {
             var why = err ? (err.message || 'network error') : 'HTTP ' + status;

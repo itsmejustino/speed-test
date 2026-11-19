@@ -174,3 +174,21 @@ func TestDamagedHistoryIsKept(t *testing.T) {
 		t.Errorf("new history: %+v", list)
 	}
 }
+
+func TestDownloadSize(t *testing.T) {
+	for _, c := range []struct {
+		moved   int64
+		elapsed time.Duration
+		want    int64
+	}{
+		{0, 0, 2e6},                        // first request
+		{1e6, 100 * time.Millisecond, 2e6}, // too early to judge
+		{1.25e9, 10 * time.Second, 25e6},   // 1 Gbps: largest size
+		{12.5e6, 10 * time.Second, 2e6},    // 10 Mbps over 6 connections: small
+		{125e6, 10 * time.Second, 4166666}, // 100 Mbps over 6: about 4 MB
+	} {
+		if got := downloadSize(25e6, c.moved, c.elapsed, 6); got != c.want {
+			t.Errorf("downloadSize(%d, %v) = %d, want %d", c.moved, c.elapsed, got, c.want)
+		}
+	}
+}
