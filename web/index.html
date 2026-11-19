@@ -1377,6 +1377,12 @@
       }
       emit({ type: 'meta', server: meta.server, client: meta.client, distanceKm: res.distanceKm, fiberFloorMs: res.fiberFloorMs, probeMethod: res.probeMethod });
 
+      // Open the two connections the pings use, so setting them up (DNS, TCP,
+      // TLS) is not counted as delay or loss. Not recorded.
+      this.status('Opening connections...');
+      for (var w = 0; w < 3 && !this.stopped; w++) await Promise.all([this.ping(), this.ping()]);
+      if (this.stopped) throw new DOMException('Stopped', 'AbortError');
+
       this.t0 = performance.now();
       var stopProbes = this.probeLoop();
       try {
