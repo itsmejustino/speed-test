@@ -582,10 +582,26 @@ func (r *Run) transfer(kind string) (PhaseStats, error) {
 			defer tr.CloseIdleConnections()
 			c := &http.Client{Transport: tr}
 			errs := 0
+			// Each connection starts with small requests and doubles them while
+			// they finish quickly, so a slow line still completes requests (and
+			// gets the server's TCP figures, which come with each answer) while a
+			// fast one soon spends almost no time between requests.
+			// Uploads keep the large size from the start: an upload is counted as
+			// it enters the computer's send buffer, which refills in a burst at
+			// every new request and would make short requests read unevenly.
+			cur := int64(2e6)
+			if kind == "upload" {
+				cur = sizes[0]
+			}
 			for ctx.Err() == nil {
 				idx := atomic.LoadInt32(&sizeIdx)
+				size := sizes[idx]
+				if cur < size {
+					size = cur
+				}
 				atomic.AddInt64(&requests, 1)
-				status, err := r.request(ctx, c, kind, sizes[idx], &moved, onL4)
+				reqStart := time.Now()
+				status, err := r.request(ctx, c, kind, size, &moved, onL4)
 				if ctx.Err() != nil {
 					return
 				}
@@ -596,6 +612,9 @@ func (r *Run) transfer(kind string) (PhaseStats, error) {
 					return
 				case status >= 200 && status < 300 && err == nil:
 					errs = 0
+					if time.Since(reqStart) < 1500*time.Millisecond && cur < sizes[0] {
+						cur *= 2
+					}
 					continue
 				case early && int(idx) < len(sizes)-1 && (status == 403 || status == 413 || (status == 0 && kind == "upload")):
 					// The server turned the file size down: everyone steps down one size.
