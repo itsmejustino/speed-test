@@ -78,7 +78,9 @@ Run it on a wired connection with nothing else using the line. The tests measure
 1. In the Cloudflare dashboard, create an API token with **Account › Radar › Read**.
 2. Paste it into **Settings** and press **Check token**.
 
-The token is stored only in your local `settings.json`.
+The token is stored only in your local `settings.json`. On Windows it is encrypted with Windows Data Protection, so only your Windows account on that computer can read it. Elsewhere the file is readable by your user only. The token is never sent to the page, saved in results or included in reports. The web version doesn't use a token at all.
+
+The local page answers only at `http://localhost:8765/`. Requests for any other host name are refused, which blocks DNS-rebinding attacks. So are requests from other websites.
 
 ## Build from source
 

@@ -120,19 +120,46 @@ func (s Settings) public() map[string]any {
 func loadSettings() Settings {
 	s := defaultSettings()
 	path := filepath.Join(baseDir, "settings.json")
+	migrate := false
 	if b, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(b, &s); err != nil {
 			keepDamaged(path)
 			s = defaultSettings()
 		}
 	}
+	if isProtected(s.RadarToken) {
+		plain, err := unprotectSecret(s.RadarToken)
+		if err != nil {
+			// Encrypted for another Windows account or computer (settings.json
+			// was copied): it cannot be read here, so it is not used.
+			fmt.Println("The saved Cloudflare API token was encrypted for another Windows account or computer; paste it again in Settings.")
+			plain = ""
+		}
+		s.RadarToken = plain
+	} else if s.RadarToken != "" && secretSupported() {
+		migrate = true // saved as text by an older version
+	} else if s.RadarToken != "" {
+		_ = os.Chmod(path, 0o600) // an older version wrote it readable by everyone
+	}
 	s.sanitize()
+	if migrate {
+		_ = saveSettings(s)
+	}
 	return s
 }
 
+// saveSettings writes the token encrypted where Windows can encrypt it, and
+// the file readable by this user only elsewhere.
 func saveSettings(s Settings) error {
+	if s.RadarToken != "" {
+		enc, err := protectSecret(s.RadarToken)
+		if err != nil {
+			return err
+		}
+		s.RadarToken = enc
+	}
 	b, _ := json.MarshalIndent(s, "", "  ")
-	return writeFileAtomic(filepath.Join(baseDir, "settings.json"), b)
+	return writeFileMode(filepath.Join(baseDir, "settings.json"), b, 0o600)
 }
 
 // ------------------------------------------------------------------ History
@@ -183,9 +210,12 @@ func keepDamaged(path string) {
 	}
 }
 
-func writeFileAtomic(path string, b []byte) error {
+func writeFileAtomic(path string, b []byte) error { return writeFileMode(path, b, 0o644) }
+
+func writeFileMode(path string, b []byte, mode os.FileMode) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	_ = os.Remove(tmp) // WriteFile keeps an old file's mode
+	if err := os.WriteFile(tmp, b, mode); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

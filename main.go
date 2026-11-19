@@ -102,7 +102,7 @@ func main() {
 	if !*noBrowser {
 		openBrowser(url)
 	}
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: localOnly(*port, mux), ReadHeaderTimeout: 10 * time.Second}
 	if err := srv.Serve(ln); err != nil {
 		fmt.Println(err)
 	}
