@@ -187,7 +187,29 @@
     display: flex; align-items: center; gap: 0.55rem; white-space: nowrap;
   }
 
-  .readouts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1rem; }
+  .readouts { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(5, minmax(0, 1fr)); gap: 0.9rem; }
+  /* Every tile opens its explanation in the guide */
+  .readouts .box { cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease; }
+  .readouts .box:hover { transform: translateY(-2px); border-color: var(--line); }
+  .readouts .box:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .readouts .box.score::before { background: var(--line); opacity: 0.8; }
+  /* Six tiles in a row: labels tighter, second lines wrap instead of being cut */
+  .readouts .box { padding-left: 1.15rem; padding-right: 1.1rem; }
+  .readouts .box::before { left: 1.15rem; right: 1.1rem; }
+  .readouts .box > h2 { letter-spacing: 0.09em; font-size: 0.74rem; gap: 0.45rem; white-space: normal; padding-right: 0.4rem; }
+  .readouts .box > h2 .sicon { display: none; }
+  :root[data-theme="robot"] .readouts .box > h2 { padding-right: 1.2rem; }
+  /* The robot's thick frames need the room: two rows of three at every desktop width */
+  @media (min-width: 641px) { :root[data-theme="robot"] .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .readouts .sub { white-space: normal; overflow: visible; line-height: 1.4; }
+  .box.score .num { font-size: clamp(1.8rem, 3vw, 2.4rem); }
+  .readouts .box.score.s-great::before, .readouts .box.score.s-good::before { background: var(--up); opacity: 1; }
+  .readouts .box.score.s-okay::before { background: var(--lat); opacity: 1; }
+  .readouts .box.score.s-poor::before { background: var(--loss); opacity: 1; }
+  .box.score.s-great .num, .box.score.s-good .num { color: var(--up); }
+  .box.score.s-okay .num { color: var(--lat); }
+  .box.score.s-poor .num { color: var(--loss); }
+  @media (prefers-reduced-motion: reduce) { .readouts .box { transition: none; } .readouts .box:hover { transform: none; } }
   .readouts .box { overflow: hidden; padding-top: 1.2rem; }
   .readouts .box::before {
     content: ""; position: absolute; left: 1.4rem; right: 1.4rem; top: 0; height: 3px; border-radius: 0 0 3px 3px;
@@ -631,8 +653,8 @@
   :root[data-theme="robot"] .console.on .tube i { animation: tube-flicker 2.6s infinite; }
   @keyframes tube-flicker { 0%, 100% { opacity: 1; } 47% { opacity: 0.92; } 50% { opacity: 0.8; } 53% { opacity: 0.95; } }
 
+  @media (max-width: 1080px) { .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   @media (max-width: 980px) {
-    .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .conn, .conn.four, .cmp-ranks, .qual { grid-template-columns: 1fr; }
     table.route .barcell { display: none; }
     .cmp-table .verdict { display: none; }
@@ -658,6 +680,15 @@
 
   [hidden] { display: none !important; }
   a.info { flex: none; }
+  .back-top {
+    position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 20;
+    padding: 0.65rem 1.1rem; border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
+    background: var(--screen); color: var(--bright); box-shadow: 0 8px 24px var(--shadow); font: inherit; font-size: 0.95rem;
+  }
+  .back-top:hover { border-color: var(--accent); }
+  .guide details.flash > summary { animation: guide-flash 1.6s ease; border-radius: 10px; }
+  @keyframes guide-flash { 0%, 30% { background: var(--hover); box-shadow: 0 0 0 2px var(--accent); } 100% { background: transparent; box-shadow: 0 0 0 0 transparent; } }
+  @media (prefers-reduced-motion: reduce) { .guide details.flash > summary { animation: none; } }
   .web-note { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--edge); font-size: 0.9rem; }
   dialog { max-height: calc(100dvh - 2rem); overflow: auto; overscroll-behavior: contain; }
   /* ---------------- Phones (iPhone and similar) ---------------- */
@@ -700,6 +731,10 @@
     .readouts { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.6rem; }
     .readouts .box { grid-column: span 2; padding: 0.75rem 0.7rem 0.7rem; }
     .readouts .box.down, .readouts .box.up { grid-column: span 3; order: -1; }
+    .readouts .box.score { grid-column: 1 / -1; order: -2; display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 1rem; }
+    .readouts .box.score > h2 { grid-column: 1 / -1; }
+    .readouts .box.score .num { font-size: 1.9rem; }
+    .readouts .box.score .sub { align-self: center; }
     .readouts .box::before { left: 0.7rem; right: 0.7rem; }
     .readouts .box > h2 { font-size: 0.66rem; letter-spacing: 0.07em; gap: 0.3rem; }
     .readouts .sicon, .readouts a.info { display: none; }
@@ -775,6 +810,11 @@
   </div>
 
   <div class="readouts">
+    <section class="box score" id="scoreBox">
+      <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-gauge"/></svg>Connection score<a class="info" href="#g-ratings" aria-label="How the connection score works" title="What this means">?</a></h2>
+      <p class="value"><span class="num" id="score">--</span></p>
+      <p class="sub" id="scoreSub">after a test</p>
+    </section>
     <section class="box lat">
       <h2><svg class="sicon" aria-hidden="true" focusable="false"><use href="#i-ping"/></svg>Ping<a class="info" href="#g-ping" aria-label="What ping means" title="What this means">?</a></h2>
       <p class="value"><span class="num" id="ping">--</span><span class="unit">ms</span></p>
@@ -1015,8 +1055,9 @@
     </details>
 
     <details id="g-ratings">
-      <summary><span class="g-name">Where the ratings come from</span><span class="g-why">Every threshold is published by the source named.</span></summary>
+      <summary><span class="g-name">Connection score and ratings</span><span class="g-why">One word for the whole line, and where each threshold comes from.</span></summary>
       <div class="g-body">
+        <div class="g-idea"><span class="chip">Score</span><p>The connection score is the weakest of three ratings: video calls, gaming and streaming. One weak spot shows instead of being averaged away. <b>Great</b> and <b>Good</b> mean everyday use works well; <b>Okay</b> or <b>Poor</b> names the use that suffers.</p></div>
         <ul class="g-fix">
           <li><b>Ping, jitter, loss, bufferbloat, gaming:</b> Cloudflare's AIM bands. Gaming takes the weakest of loss, ping and bufferbloat. AIM leaves ping between 50 and 100 ms unscored, so it counts as poor here.</li>
           <li><b>Video calls:</b> Microsoft's Teams targets. Under 100 ms round trip, 30 ms jitter, 1% loss.</li>
@@ -1048,6 +1089,7 @@
   <span><kbd>Esc</kbd>Stop</span>
   <span>Click a result for details</span>
 </footer>
+<button type="button" id="backTop" class="back-top" hidden>&uarr; Back to results</button>
 <footer class="legal">
   <p>Speed Test measures against the public Cloudflare&reg; speed test service at speed.cloudflare.com and, if you add an API token, compares results using the Cloudflare Radar&trade; API.
   Speed Test is an independent project. It is not affiliated with, endorsed by or sponsored by Cloudflare, Inc.</p>
@@ -1785,7 +1827,9 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
   // ------------------------------------------------------------------ Readouts
   function clearReadouts() {
     ['ping', 'jitter', 'loss', 'down', 'up'].forEach(function (k) { $(k).textContent = '--'; });
+    showScore(null);
     if (running) {
+      setWaiting('scoreSub', 'after the test', 'lat');
       setWaiting('pingSub', 'measuring idle', 'lat'); setWaiting('jitterSub', 'measuring idle', 'lat');
       setWaiting('lossSub', 'counting pings', 'lat');
       setWaiting('downSub', 'up next', 'down'); setWaiting('upSub', 'after download', 'up');
@@ -1793,6 +1837,7 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
     }
     $('pingSub').textContent = 'idle median'; $('jitterSub').textContent = 'idle';
     $('lossSub').textContent = ''; $('downSub').textContent = ''; $('upSub').textContent = '';
+    $('scoreSub').textContent = 'after a test';
   }
 
   var lastSpeedText = 0;
@@ -1847,6 +1892,7 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
   }
 
   function showResult(r) {
+    showScore(r);
     $('ping').textContent = fmtMs(r.idle.median);
     $('pingSub').textContent = 'idle · loaded ↓ ' + fmtMs(r.download.latency.median) + '  ↑ ' + fmtMs(r.upload.latency.median);
     $('jitter').textContent = fmtMs(r.idle.jitter);
@@ -2072,6 +2118,23 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
     return out;
   }
 
+  // The connection score: the weakest of the three ratings, so one weak spot
+  // is not averaged away. Each rating follows a published threshold.
+  function connectionScore(r) {
+    var rs = ratings(r), order = ['Poor', 'Okay', 'Good', 'Great'], worst = 3;
+    rs.forEach(function (x) { worst = Math.min(worst, order.indexOf(x[1])); });
+    return { level: order[worst], parts: rs.map(function (x) { return [x[0].replace('Video calls', 'Calls'), x[1]]; }) };
+  }
+  function showScore(r) {
+    var box = $('scoreBox');
+    box.className = 'box score';
+    if (!r) { $('score').textContent = '--'; return; }
+    var sc = connectionScore(r);
+    box.classList.add('s-' + sc.level.toLowerCase());
+    $('score').textContent = sc.level;
+    $('scoreSub').textContent = sc.parts.map(function (p) { return p[0] + ' ' + p[1].toLowerCase(); }).join(' \u00b7 ');
+  }
+
   function renderQuality(r) {
     var box = $('quality'); box.textContent = '';
     if (!r) {
@@ -2167,6 +2230,7 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
     var sd = r.download.server, su = r.upload.server;
     if (sd) L.push(pad('Server TCP', 12) + 'min RTT ' + f1(sd.minRtt) + ' ms · resent ' + sd.retransPct.toFixed(2) + '% downloading' + (su ? ', ' + su.retransPct.toFixed(2) + '% uploading' : ''));
     if (r.tcp) L.push(pad('Local TCP', 12) + r.tcp.ratePct.toFixed(2) + '% of ' + r.tcp.segmentsSent + ' segments resent');
+    L.push(pad('Score', 12) + connectionScore(r).level + ' (the weakest of the ratings below)');
     L.push(pad('Good for', 12) + ratings(r).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · '));
     if (r.route && r.route.length) {
       L.push(''); L.push('Route:');
@@ -2256,13 +2320,13 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
   function exportCSV() {
     var cols = ['when', 'server_colo', 'server_ip', 'client_ip', 'isp', 'asn', 'distance_km', 'idle_ms', 'idle_jitter_ms', 'loss_pct',
       'download_mbps', 'download_median_mbps', 'download_p90_mbps', 'upload_mbps', 'upload_median_mbps', 'upload_p90_mbps',
-      'download_loaded_ms', 'upload_loaded_ms', 'bufferbloat_ms', 'bufferbloat_grade', 'server_min_rtt_ms', 'server_retrans_pct', 'route_hops', 'probe_method', 'seconds_each_way', 'connections'];
+      'download_loaded_ms', 'upload_loaded_ms', 'bufferbloat_ms', 'bufferbloat_grade', 'connection_score', 'server_min_rtt_ms', 'server_retrans_pct', 'route_hops', 'probe_method', 'seconds_each_way', 'connections'];
     var esc = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var rows = history.map(function (r) {
       var bloat = Math.max(0, r.download.bloatMs || 0, r.upload.bloatMs || 0), sv = r.download.server || {};
       return [new Date(r.when).toISOString(), r.server.colo, r.server.ip, r.client.ip, r.client.isp, r.client.asn, r.distanceKm ? r.distanceKm.toFixed(1) : '',
         r.idle.median, r.idle.jitter, r.lossPct, r.download.mbps, r.download.median, r.download.p90, r.upload.mbps, r.upload.median, r.upload.p90,
-        r.download.latency.median, r.upload.latency.median, bloat.toFixed(2), bloatGrade(bloat), sv.minRtt, sv.retransPct,
+        r.download.latency.median, r.upload.latency.median, bloat.toFixed(2), bloatGrade(bloat), connectionScore(r).level, sv.minRtt, sv.retransPct,
         r.route ? r.route.length : '', r.probeMethod, r.config.directionSeconds, r.config.streams].map(function (v) {
           return esc(typeof v === 'number' ? Math.round(v * 1000) / 1000 : v);
         }).join(',');
@@ -3137,8 +3201,33 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
     if (d && d.tagName === 'DETAILS') { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }
   window.addEventListener('hashchange', openGuide);
+
+  // Tapping a tile opens its explanation, highlights it for a moment, and
+  // offers a way back up.
+  function showGuide(id) {
+    var d = document.getElementById(id); if (!d) return;
+    if (location.hash === '#' + id) openGuide(); else location.hash = id;
+    d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash');
+    $('backTop').hidden = false;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.readouts .box'), function (box) {
+    var link = box.querySelector('a.info'); if (!link) return;
+    var id = link.getAttribute('href').slice(1);
+    box.tabIndex = 0; box.setAttribute('role', 'link');
+    box.setAttribute('aria-label', box.querySelector('h2').textContent.replace('?', '').trim() + ': what it means');
+    box.addEventListener('click', function (e) { if (e.target.closest('a')) return; showGuide(id); });
+    box.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showGuide(id); } });
+  });
+  $('backTop').addEventListener('click', function () {
+    this.hidden = true;
+    document.querySelector('.readouts').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  window.addEventListener('scroll', function () {
+    if (!$('backTop').hidden && document.querySelector('.readouts').getBoundingClientRect().bottom > 0) $('backTop').hidden = true;
+  }, { passive: true });
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('a.info'); if (!a) return;
+    $('backTop').hidden = false;
     if (location.hash === a.getAttribute('href')) { e.preventDefault(); openGuide(); }
   });
 
