@@ -54,7 +54,7 @@ func main() {
 	compare := flag.Bool("compare", false, "run this test, M-Lab's ndt7-client and Ookla's speedtest CLI (when found) back to back, and report each one's median and spread")
 	rounds := flag.Int("rounds", 5, "with -compare: rounds of every test")
 	pause := flag.Float64("pause", 5, "with -compare: seconds to wait between tests")
-	acceptOokla := flag.Bool("accept-ookla-license", false, "with -compare: accept Ookla's licence and privacy terms when running its speedtest CLI")
+	acceptOokla := flag.Bool("accept-ookla-license", false, "with -compare: accept Ookla's license and privacy terms when running its speedtest CLI")
 	flag.Parse()
 
 	if baseDir == "" {

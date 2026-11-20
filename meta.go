@@ -14,8 +14,8 @@ import (
 
 // Cloudflare's speed test server tells each visitor what it sees: the visitor's
 // public IP, network (ASN and name), approximate location from the IP, and the
-// code of the data centre ("colo") that answered. /locations lists where each
-// data centre is.
+// code of the data center ("colo") that answered. /locations lists where each
+// data center is.
 
 func (r *Run) fetchMeta() (ServerInfo, ClientInfo, *Setup) {
 	var s ServerInfo
@@ -59,7 +59,7 @@ func (r *Run) fetchMeta() (ServerInfo, ClientInfo, *Setup) {
 		c.Postal = str(m["postalCode"])
 		c.Lat, c.Lon = num(m["latitude"]), num(m["longitude"])
 		c.HasGeo = m["latitude"] != nil && m["longitude"] != nil && !(c.Lat == 0 && c.Lon == 0)
-		// "colo" used to be a code; it is now the whole data-centre record.
+		// "colo" used to be a code; it is now the whole data-center record.
 		if co, ok := m["colo"].(map[string]any); ok {
 			s.Colo = strings.ToUpper(str(co["iata"]))
 			if co["lat"] != nil && co["lon"] != nil {
@@ -95,7 +95,7 @@ func (r *Run) fetchMeta() (ServerInfo, ClientInfo, *Setup) {
 				}
 			}
 		}
-		// Country and data centre from the trace page, which every Cloudflare site has.
+		// Country and data center from the trace page, which every Cloudflare site has.
 		if c.Country == "" || s.Colo == "" {
 			req, _ := http.NewRequestWithContext(r.ctx, "GET", r.cfg.Server+"/cdn-cgi/trace", nil)
 			browserHeaders(req, r.cfg.Server)
@@ -200,7 +200,7 @@ func num(v any) float64 {
 }
 
 // Used only if /locations cannot be read. Airport coordinates, which is where
-// Cloudflare names its data centres.
+// Cloudflare names its data centers.
 type colo struct {
 	lat, lon float64
 	city, cc string

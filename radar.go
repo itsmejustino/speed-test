@@ -86,7 +86,7 @@ func radarGet(ctx context.Context, cl *http.Client, token, path string, q url.Va
 		case code == 9106 || (resp.StatusCode == 400 && code == 0):
 			return nil, &testError{"the saved token is not in the right form. In Settings, paste only the token itself (no \"Bearer\", no spaces)"}
 		case resp.StatusCode == 401 || code == 10000:
-			return nil, &testError{"the Cloudflare API did not recognise the token. It may have been copied incompletely, deleted or expired; create a new one and paste it in Settings"}
+			return nil, &testError{"the Cloudflare API did not recognize the token. It may have been copied incompletely, deleted or expired; create a new one and paste it in Settings"}
 		case resp.StatusCode == 403:
 			return nil, &testError{"the token works but cannot read Radar data. Edit it in the Cloudflare dashboard and give it Account \u2192 Radar \u2192 Read"}
 		case resp.StatusCode == 429:

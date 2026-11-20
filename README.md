@@ -44,7 +44,7 @@ Settings and history are saved next to the program in `settings.json` and `histo
 | `-compare` | off | Run this test and other speed tests back to back (see below) |
 | `-rounds` | `5` | With `-compare`: rounds of every test |
 | `-pause` | `5` | With `-compare`: seconds between tests |
-| `-accept-ookla-license` | off | With `-compare`: accept Ookla's licence when running its CLI |
+| `-accept-ookla-license` | off | With `-compare`: accept Ookla's license when running its CLI |
 
 ### Command line
 
@@ -69,7 +69,7 @@ SpeedTest.exe -compare -rounds 10
 It rotates the order every round, then reports each test's median and spread (how far apart its runs were), and saves every run to a `compare-….csv` file next to the program. It uses these when it finds them next to `SpeedTest.exe` or on the PATH:
 
 - **M-Lab NDT7:** [`ndt7-client`](https://github.com/m-lab/ndt7-client-go). One TCP connection to an M-Lab server outside your ISP's network.
-- **Ookla Speedtest:** the [Speedtest CLI](https://www.speedtest.net/apps/cli). Several connections, usually to a server inside your ISP's network. Run it once yourself to accept its licence, or add `-accept-ookla-license`.
+- **Ookla Speedtest:** the [Speedtest CLI](https://www.speedtest.net/apps/cli). Several connections, usually to a server inside your ISP's network. Run it once yourself to accept its license, or add `-accept-ookla-license`.
 
 Run it on a wired connection with nothing else using the line. The tests measure to different servers in different ways, so some difference between them is expected; the spread shows how repeatable each one is.
 

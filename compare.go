@@ -53,7 +53,7 @@ func watchInterrupt(cancel func()) *interrupt {
 //   - M-Lab NDT7: ndt7-client (github.com/m-lab/ndt7-client-go). One TCP
 //     connection to an M-Lab server outside your ISP's network.
 //   - Ookla Speedtest: speedtest (the official Speedtest CLI). Several
-//     connections, usually to a server inside your ISP's network. Its licence
+//     connections, usually to a server inside your ISP's network. Its license
 //     must be accepted: run it once yourself, or pass -accept-ookla-license.
 
 type sample struct {
@@ -276,7 +276,7 @@ func compareTools(acceptOokla bool) []tool {
 			out, err := runProgram(ctx, p, args...)
 			if err != nil {
 				if !acceptOokla && strings.Contains(strings.ToLower(err.Error()), "license") {
-					err = errors.New("its licence has not been accepted: run speedtest once yourself, or add -accept-ookla-license")
+					err = errors.New("its license has not been accepted: run speedtest once yourself, or add -accept-ookla-license")
 				}
 				return sample{}, err
 			}
@@ -328,7 +328,7 @@ func runCompare(rounds int, pause time.Duration, acceptOokla, asJSON bool, stdou
 		}
 	}
 	if interrupted.hit.Load() {
-		logf("Stopped; summarising what was measured.")
+		logf("Stopped; summarizing what was measured.")
 	}
 
 	name := filepath.Join(baseDir, "compare-"+time.Now().Format("20060102-150405")+".csv")
@@ -337,7 +337,7 @@ func runCompare(rounds int, pause time.Duration, acceptOokla, asJSON bool, stdou
 	} else {
 		logf("Every run is in %s", name)
 	}
-	sum := summarise(tools, all)
+	sum := summarize(tools, all)
 	if asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
@@ -399,7 +399,7 @@ func statOf(v []float64) stat {
 	return s
 }
 
-func summarise(tools []tool, all []sample) []toolSummary {
+func summarize(tools []tool, all []sample) []toolSummary {
 	var out []toolSummary
 	for _, t := range tools {
 		ts := toolSummary{Tool: t.name}
@@ -427,7 +427,7 @@ func summarise(tools []tool, all []sample) []toolSummary {
 		ts.HasLoadedLatency = ts.LoadedDn.N > 0
 		switch t.name {
 		case "Speed Test":
-			ts.MeasuresAgainst, ts.ConnectionsUsed = "Cloudflare's nearest data centre", "several connections"
+			ts.MeasuresAgainst, ts.ConnectionsUsed = "Cloudflare's nearest data center", "several connections"
 		case "M-Lab NDT7":
 			ts.MeasuresAgainst, ts.ConnectionsUsed = "an M-Lab server outside your ISP's network", "one connection"
 		case "Ookla Speedtest":

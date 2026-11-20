@@ -1000,7 +1000,7 @@ func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {
 }
 
 // The fastest a round trip over that distance can be: there and back, at the
-// speed of light in glass fibre (about 204,000 km/s, two thirds of c).
+// speed of light in glass fiber (about 204,000 km/s, two thirds of c).
 func fiberFloorMs(km float64) float64 { return 2 * km / 204190 * 1000 }
 
 // parseCfL4 reads Cloudflare's cfL4 Server-Timing entry, for example
